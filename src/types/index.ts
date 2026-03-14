@@ -41,3 +41,47 @@ export interface ChatMessage {
   strategyId?: string;
   phaseId?: string;
 }
+
+export interface UserProfile {
+  uid: string;
+  displayName: string;
+  photoURL: string;
+  email: string;
+  createdAt: number;
+  teams: string[];
+}
+
+export interface Team {
+  id: string;
+  name: string;
+  description: string;
+  leaderId: string;
+  members: string[];
+  inviteCode: string;
+  createdAt: number;
+}
+
+export interface StrategyMeta {
+  id: string;
+  name: string;
+  description: string;
+  authorId: string;
+  authorName: string;
+  teamId: string;
+  teamName: string;
+  visibility: 'public' | 'private' | 'team';
+  phases: Phase[];
+  createdAt: number;
+  updatedAt: number;
+  likesCount: number;
+}
+
+export interface Comment {
+  id: string;
+  strategyId: string;
+  authorId: string;
+  authorName: string;
+  authorPhoto: string;
+  text: string;
+  createdAt: number;
+}

@@ -2,8 +2,11 @@ import { initializeApp } from 'firebase/app';
 import type { FirebaseApp } from 'firebase/app';
 import { getDatabase } from 'firebase/database';
 import type { Database } from 'firebase/database';
+import { getAuth } from 'firebase/auth';
+import type { Auth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+import type { Firestore } from 'firebase/firestore';
 
-// Firebase config - replace with your own project config
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '',
@@ -16,14 +19,36 @@ const firebaseConfig = {
 
 let app: FirebaseApp | null = null;
 let db: Database | null = null;
+let auth: Auth | null = null;
+let firestore: Firestore | null = null;
 
-export function getFirebaseDB(): Database | null {
+function ensureApp(): FirebaseApp | null {
   if (!firebaseConfig.apiKey) return null;
   if (!app) {
     app = initializeApp(firebaseConfig);
-    db = getDatabase(app);
   }
+  return app;
+}
+
+export function getFirebaseDB(): Database | null {
+  const a = ensureApp();
+  if (!a) return null;
+  if (!db) db = getDatabase(a);
   return db;
+}
+
+export function getFirebaseAuth(): Auth | null {
+  const a = ensureApp();
+  if (!a) return null;
+  if (!auth) auth = getAuth(a);
+  return auth;
+}
+
+export function getFirebaseFirestore(): Firestore | null {
+  const a = ensureApp();
+  if (!a) return null;
+  if (!firestore) firestore = getFirestore(a);
+  return firestore;
 }
 
 export function isFirebaseConfigured(): boolean {

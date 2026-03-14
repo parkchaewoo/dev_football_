@@ -3,7 +3,7 @@ import { useState } from 'react';
 interface StrategyFormProps {
   initialName?: string;
   initialDescription?: string;
-  onSave: (name: string, description: string) => void;
+  onSave: (name: string, description: string, visibility: 'public' | 'private' | 'team') => void;
   onClose: () => void;
 }
 
@@ -15,6 +15,7 @@ export default function StrategyForm({
 }: StrategyFormProps) {
   const [name, setName] = useState(initialName);
   const [description, setDescription] = useState(initialDescription);
+  const [visibility, setVisibility] = useState<'public' | 'private' | 'team'>('team');
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
@@ -27,12 +28,36 @@ export default function StrategyForm({
           onChange={(e) => setName(e.target.value)}
         />
         <textarea
-          className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600 mb-4 outline-none focus:border-blue-500 resize-none"
+          className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600 mb-3 outline-none focus:border-blue-500 resize-none"
           placeholder="설명 (선택)"
           rows={3}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
+
+        <div className="mb-4">
+          <label className="text-sm text-gray-400 block mb-2">공개 범위</label>
+          <div className="flex gap-2">
+            {([
+              { value: 'team' as const, label: '팀 내', color: 'blue' },
+              { value: 'public' as const, label: '전체 공개', color: 'green' },
+              { value: 'private' as const, label: '나만 보기', color: 'gray' },
+            ]).map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setVisibility(opt.value)}
+                className={`flex-1 px-3 py-2 text-sm rounded border transition-colors ${
+                  visibility === opt.value
+                    ? `bg-${opt.color}-600 border-${opt.color}-500 text-white`
+                    : 'bg-gray-700 border-gray-600 text-gray-400 hover:border-gray-500'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="flex gap-2 justify-end">
           <button
             onClick={onClose}
@@ -41,7 +66,7 @@ export default function StrategyForm({
             취소
           </button>
           <button
-            onClick={() => name.trim() && onSave(name.trim(), description.trim())}
+            onClick={() => name.trim() && onSave(name.trim(), description.trim(), visibility)}
             disabled={!name.trim()}
             className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40"
           >
