@@ -13,7 +13,7 @@ def render_tactical_board(
     height: int = 600,
     key: str = "tactical_board",
 ) -> Optional[dict]:
-    """3D 전술 보드를 렌더링합니다 (WebGL 실패 시 2D 폴백)."""
+    """3D 전술 보드를 렌더링합니다."""
     frames_json = json.dumps(frames_data) if frames_data else "[]"
     board_html = generate_board_html(
         players=players,
@@ -45,12 +45,12 @@ def generate_board_html(
     margin: 0; padding: 0;
     width: 100%; height: 100%;
     overflow: hidden;
-    background: #e8f4f8;
+    background: #1a1a2e;
   }}
   canvas {{ display: block; width: 100%; height: 100%; }}
   #info {{
     position: absolute; top: 8px; left: 8px;
-    color: #555; font: 12px sans-serif;
+    color: #888; font: 12px sans-serif;
     pointer-events: none; z-index: 10;
   }}
   #error {{
@@ -78,46 +78,22 @@ def generate_board_html(
 import * as THREE from 'three';
 import {{ OrbitControls }} from 'three/addons/controls/OrbitControls.js';
 
-// ===== DATA =====
-let playersData = {players_json};
-let ballData = {ball_json};
-let framesData = {frames_data};
-let isPlaying = {'true' if is_playing else 'false'};
-
-// ===== TRY 3D, FALLBACK TO 2D =====
-let use3D = true;
-
-// Detect WebGL support
-function detectWebGL() {{
-  try {{
-    const c = document.createElement('canvas');
-    const gl = c.getContext('webgl2', {{ failIfMajorPerformanceCaveat: false }})
-            || c.getContext('webgl', {{ failIfMajorPerformanceCaveat: false }})
-            || c.getContext('experimental-webgl', {{ failIfMajorPerformanceCaveat: false }});
-    if (!gl) return false;
-    // Force lose context to free it for Three.js
-    const ext = gl.getExtension('WEBGL_lose_context');
-    if (ext) ext.loseContext();
-    return true;
-  }} catch(e) {{ return false; }}
-}}
-
-if (!detectWebGL()) {{
-  use3D = false;
-}}
-
-// ============================================================
-// 3D MODE (Three.js)
-// ============================================================
-if (use3D) {{
 try {{
+
+  // ===== CONFIG =====
   const COURT_LENGTH = 40, COURT_WIDTH = 20;
   const HL = COURT_LENGTH / 2, HW = COURT_WIDTH / 2;
   const PENALTY_LEN = 6, PENALTY_W = 12, CENTER_R = 3;
   const GOAL_W = 3, GOAL_H = 2, GOAL_D = 1;
 
+  let playersData = {players_json};
+  let ballData = {ball_json};
+  let framesData = {frames_data};
+  let isPlaying = {'true' if is_playing else 'false'};
+
+  // ===== SCENE SETUP =====
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xe8f4f8);
+  scene.background = new THREE.Color(0x1a1a2e);
 
   const w = window.innerWidth || 800;
   const h = window.innerHeight || 600;
@@ -126,18 +102,11 @@ try {{
   camera.position.set(25, 25, 25);
   camera.lookAt(0, 0, 0);
 
-  const rendererCanvas = document.createElement('canvas');
-  document.body.appendChild(rendererCanvas);
-
-  const renderer = new THREE.WebGLRenderer({{
-    canvas: rendererCanvas,
-    antialias: true,
-    failIfMajorPerformanceCaveat: false,
-    powerPreference: 'default',
-  }});
+  const renderer = new THREE.WebGLRenderer({{ antialias: true }});
   renderer.setSize(w, h);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
+  document.body.appendChild(renderer.domElement);
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
@@ -168,6 +137,7 @@ try {{
   court.receiveShadow = true;
   scene.add(court);
 
+  // Court lines
   const lineMat = new THREE.LineBasicMaterial({{ color: 0xffffff }});
   function addLine(points) {{
     const geo = new THREE.BufferGeometry().setFromPoints(
@@ -176,18 +146,23 @@ try {{
     scene.add(new THREE.Line(geo, lineMat));
   }}
 
+  // Boundary
   addLine([[-HL,-HW],[HL,-HW],[HL,HW],[-HL,HW],[-HL,-HW]]);
+  // Center line
   addLine([[0,-HW],[0,HW]]);
+  // Center circle
   const cc = [];
   for (let i = 0; i <= 64; i++) {{
     const a = (i/64)*Math.PI*2;
     cc.push([Math.cos(a)*CENTER_R, Math.sin(a)*CENTER_R]);
   }}
   addLine(cc);
+  // Penalty areas
   const hpw = PENALTY_W / 2;
   addLine([[-HL,-hpw],[-HL+PENALTY_LEN,-hpw],[-HL+PENALTY_LEN,hpw],[-HL,hpw]]);
   addLine([[HL,-hpw],[HL-PENALTY_LEN,-hpw],[HL-PENALTY_LEN,hpw],[HL,hpw]]);
 
+  // Center spot
   const spotGeo = new THREE.CircleGeometry(0.2, 16);
   const spotMat = new THREE.MeshBasicMaterial({{ color: 0xffffff }});
   const spot = new THREE.Mesh(spotGeo, spotMat);
@@ -237,6 +212,7 @@ try {{
     const group = new THREE.Group();
     group.userData = {{ id: data.id, type: 'player', team: data.team }};
 
+    // Head
     const head = new THREE.Mesh(
       new THREE.SphereGeometry(0.18, 16, 16),
       new THREE.MeshStandardMaterial({{ color: colors.skin }})
@@ -244,6 +220,7 @@ try {{
     head.position.y = 1.65;
     group.add(head);
 
+    // Body (jersey) - CapsuleGeometry
     const body = new THREE.Mesh(
       new THREE.CapsuleGeometry(0.2, 0.5, 8, 16),
       new THREE.MeshStandardMaterial({{ color: colors.jersey }})
@@ -251,6 +228,7 @@ try {{
     body.position.y = 1.15;
     group.add(body);
 
+    // Arms
     const armMat = new THREE.MeshStandardMaterial({{ color: colors.skin }});
     const armGeo = new THREE.CapsuleGeometry(0.06, 0.3, 4, 8);
     const lArm = new THREE.Mesh(armGeo, armMat);
@@ -262,6 +240,7 @@ try {{
     group.userData.leftArm = lArm;
     group.userData.rightArm = rArm;
 
+    // Legs
     const legMat = new THREE.MeshStandardMaterial({{ color: colors.shorts }});
     const legGeo = new THREE.CapsuleGeometry(0.08, 0.4, 4, 8);
     const lLeg = new THREE.Mesh(legGeo, legMat);
@@ -273,6 +252,7 @@ try {{
     group.userData.leftLeg = lLeg;
     group.userData.rightLeg = rLeg;
 
+    // Shoes
     const shoeMat = new THREE.MeshStandardMaterial({{ color: 0x1a1a1a }});
     const shoeGeo = new THREE.BoxGeometry(0.12, 0.08, 0.2);
     const lShoe = new THREE.Mesh(shoeGeo, shoeMat);
@@ -282,6 +262,7 @@ try {{
     rShoe.position.set(0.1, 0.1, 0.05);
     group.add(rShoe);
 
+    // Number label (canvas texture)
     const canvas = document.createElement('canvas');
     canvas.width = 64; canvas.height = 64;
     const ctx = canvas.getContext('2d');
@@ -297,6 +278,7 @@ try {{
     numSprite.position.y = 2.0;
     group.add(numSprite);
 
+    // Selection ring
     const ringGeo = new THREE.RingGeometry(0.6, 0.75, 32);
     const ringMat = new THREE.MeshBasicMaterial({{ color: 0xffd700, transparent: true, opacity: 0 }});
     const ring = new THREE.Mesh(ringGeo, ringMat);
@@ -311,6 +293,7 @@ try {{
     scene.add(group);
     playerMeshes.push(group);
 
+    // Drag target (invisible cylinder)
     const dragTarget = new THREE.Mesh(
       new THREE.CylinderGeometry(0.5, 0.5, 2, 8),
       new THREE.MeshBasicMaterial({{ visible: false }})
@@ -335,12 +318,14 @@ try {{
   );
   ballGroup.add(ballMesh);
 
+  // Ball pattern
   const patternMesh = new THREE.Mesh(
     new THREE.DodecahedronGeometry(0.18, 0),
     new THREE.MeshStandardMaterial({{ color: 0x333333, wireframe: true, transparent: true, opacity: 0.3 }})
   );
   ballGroup.add(patternMesh);
 
+  // Ball shadow
   const shadowGeo = new THREE.CircleGeometry(0.2, 16);
   const shadowMat = new THREE.MeshBasicMaterial({{ color: 0x000000, transparent: true, opacity: 0.3 }});
   const ballShadow = new THREE.Mesh(shadowGeo, shadowMat);
@@ -348,11 +333,13 @@ try {{
   ballShadow.position.set(ballData.x, 0.02, ballData.z);
   scene.add(ballShadow);
 
+  // Ball height line
   const heightLineGeo = new THREE.BufferGeometry();
   const heightLineMat = new THREE.LineBasicMaterial({{ color: 0x999999, transparent: true, opacity: 0.5 }});
   const heightLine = new THREE.Line(heightLineGeo, heightLineMat);
   scene.add(heightLine);
 
+  // Ball selection ring
   const ballRingGeo = new THREE.RingGeometry(0.35, 0.45, 32);
   const ballRingMat = new THREE.MeshBasicMaterial({{ color: 0xffd700, transparent: true, opacity: 0 }});
   const ballRing = new THREE.Mesh(ballRingGeo, ballRingMat);
@@ -360,6 +347,7 @@ try {{
   ballRing.position.y = 0.03;
   scene.add(ballRing);
 
+  // Ball drag target
   const ballDragTarget = new THREE.Mesh(
     new THREE.SphereGeometry(0.5, 8, 8),
     new THREE.MeshBasicMaterial({{ visible: false }})
@@ -367,7 +355,7 @@ try {{
   ballDragTarget.userData = {{ id: 'ball', type: 'ball' }};
   scene.add(ballDragTarget);
 
-  ballGroup.position.set(ballData.x, 0.22, ballData.z);
+  ballGroup.position.set(ballData.x, ballData.y, ballData.z);
   scene.add(ballGroup);
 
   function updateBallVisuals() {{
@@ -376,6 +364,7 @@ try {{
     ballShadow.scale.setScalar(Math.max(0.1, 1 - p.y / 10));
     ballRing.position.set(p.x, 0.03, p.z);
     ballDragTarget.position.set(p.x, Math.max(0.5, p.y), p.z);
+
     if (p.y > 0.3) {{
       const pts = [new THREE.Vector3(p.x, 0.01, p.z), new THREE.Vector3(p.x, p.y, p.z)];
       heightLine.geometry.dispose();
@@ -425,10 +414,12 @@ try {{
     if (e.button !== 0) return;
     getMousePos(e);
     raycaster.setFromCamera(mouse, camera);
+
     const targets = [...playerDragTargets, ballDragTarget];
     const hits = raycaster.intersectObjects(targets);
     if (hits.length > 0) {{
-      dragging = hits[0].object.userData;
+      const hit = hits[0].object;
+      dragging = hit.userData;
       selectObject(dragging);
       controls.enabled = false;
     }} else {{
@@ -441,14 +432,22 @@ try {{
     getMousePos(e);
     raycaster.setFromCamera(mouse, camera);
     raycaster.ray.intersectPlane(groundPlane, intersection);
+
     const x = Math.max(-HL, Math.min(HL, intersection.x));
     const z = Math.max(-HW, Math.min(HW, intersection.z));
 
     if (dragging.type === 'player') {{
       const mesh = playerMeshes.find(m => m.userData.id === dragging.id);
       const dragT = playerDragTargets.find(t => t.userData.id === dragging.id);
-      if (mesh) {{ mesh.position.x = x; mesh.position.z = z; }}
-      if (dragT) {{ dragT.position.x = x; dragT.position.z = z; }}
+      if (mesh) {{
+        mesh.position.x = x;
+        mesh.position.z = z;
+        mesh.userData.ring.position.set(0, 0.03, 0);
+      }}
+      if (dragT) {{
+        dragT.position.x = x;
+        dragT.position.z = z;
+      }}
     }} else if (dragging.type === 'ball') {{
       ballGroup.position.x = x;
       ballGroup.position.z = z;
@@ -457,27 +456,35 @@ try {{
   }});
 
   renderer.domElement.addEventListener('pointerup', () => {{
-    if (dragging) {{ dragging = null; controls.enabled = true; }}
+    if (dragging) {{
+      dragging = null;
+      controls.enabled = true;
+    }}
   }});
 
-  // ===== ANIMATION =====
+  // ===== ANIMATION PLAYBACK =====
   let animFrames = [];
   let animPhase = 0;
   let animProgress = 0;
   let runPhases = {{}};
 
-  if (framesData.length > 1) {{ animFrames = framesData; }}
+  if (framesData.length > 1) {{
+    animFrames = framesData;
+  }}
 
   function lerp(a, b, t) {{ return a + (b - a) * t; }}
 
   function updateAnimation(delta) {{
     if (!isPlaying || animFrames.length < 2) return;
+
     animProgress += delta * 0.5;
     if (animProgress >= 1) {{
       animProgress = 0;
       animPhase++;
       if (animPhase >= animFrames.length - 1) {{
-        animPhase = 0; isPlaying = false; return;
+        animPhase = 0;
+        isPlaying = false;
+        return;
       }}
     }}
 
@@ -493,7 +500,9 @@ try {{
         const dx = Math.abs(tp.position.x - fp.position.x);
         const dz = Math.abs(tp.position.z - fp.position.z);
         const moving = dx > 0.1 || dz > 0.1;
-        mesh.position.x = nx; mesh.position.z = nz;
+
+        mesh.position.x = nx;
+        mesh.position.z = nz;
 
         if (moving) {{
           mesh.rotation.y = Math.atan2(tp.position.x - fp.position.x, tp.position.z - fp.position.z);
@@ -515,22 +524,32 @@ try {{
       }}
     }});
 
+    // Ball
     const fb = from.ball_position;
     const tb = to.ball_position;
     ballGroup.position.x = lerp(fb.x, tb.x, animProgress);
     ballGroup.position.z = lerp(fb.z, tb.z, animProgress);
 
+    // Trajectory type: "linear" or "parabolic"
     const trajectory = to.ball_trajectory || "linear";
     const peakHeight = to.ball_peak_height || 0;
+
     if (trajectory === "parabolic" && peakHeight > 0) {{
+      // Quadratic bezier: start Y -> peak -> end Y
       const t = animProgress;
-      ballGroup.position.y = (1-t)*(1-t)*0.22 + 2*(1-t)*t*peakHeight + t*t*0.22;
+      const startY = fb.y;
+      const endY = tb.y;
+      const controlY = peakHeight;
+      // B(t) = (1-t)^2 * P0 + 2(1-t)t * P1 + t^2 * P2
+      ballGroup.position.y = (1-t)*(1-t)*startY + 2*(1-t)*t*controlY + t*t*endY;
     }} else {{
-      ballGroup.position.y = 0.22;
+      // Linear interpolation
+      ballGroup.position.y = lerp(fb.y, tb.y, animProgress);
     }}
     updateBallVisuals();
   }}
 
+  // ===== RENDER LOOP =====
   const clock = new THREE.Clock();
   function animate() {{
     requestAnimationFrame(animate);
@@ -541,6 +560,7 @@ try {{
   }}
   animate();
 
+  // Resize
   window.addEventListener('resize', () => {{
     const rw = window.innerWidth;
     const rh = window.innerHeight;
@@ -550,245 +570,12 @@ try {{
   }});
 
 }} catch (err) {{
-  // 3D failed, switch to 2D fallback
-  use3D = false;
-  console.warn('3D failed, using 2D fallback:', err.message);
-  document.getElementById('info').textContent = '마우스 드래그: 선수/공 이동 (2D 모드)';
-  init2D();
-}}
-}} // end if(use3D)
-
-// ============================================================
-// 2D FALLBACK MODE (Canvas 2D - no WebGL needed)
-// ============================================================
-if (!use3D) {{
-  init2D();
-}}
-
-function init2D() {{
-  document.body.style.background = '#1a472a';
-
-  const COURT_W = 40, COURT_H = 20;
-  const PENALTY_LEN = 6, PENALTY_W2 = 12, CENTER_R2 = 3;
-  const GOAL_W2 = 3, GOAL_D2 = 1.5;
-  const PADDING = 30, PLAYER_R = 14, BALL_R = 9;
-
-  // Remove any existing 3D canvas
-  const existing = document.querySelectorAll('canvas');
-  existing.forEach(c => {{ if (c.id !== 'fallback2d') c.remove(); }});
-
-  const canvas = document.createElement('canvas');
-  canvas.id = 'fallback2d';
-  document.body.appendChild(canvas);
-  const ctx = canvas.getContext('2d');
-
-  let scale = 1, offX = 0, offY = 0;
-
-  function resize() {{
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    const sx = (canvas.width - PADDING*2) / COURT_W;
-    const sy = (canvas.height - PADDING*2) / COURT_H;
-    scale = Math.min(sx, sy);
-    offX = canvas.width / 2;
-    offY = canvas.height / 2;
+  const errDiv = document.getElementById('error');
+  if (errDiv) {{
+    errDiv.style.display = 'block';
+    errDiv.textContent = 'Three.js 로딩 실패: ' + err.message;
   }}
-
-  function toC(cx, cz) {{ return [offX + cx*scale, offY + cz*scale]; }}
-  function toW(px, py) {{ return [(px - offX)/scale, (py - offY)/scale]; }}
-
-  function drawCourt() {{
-    ctx.fillStyle = '#2d8a4e';
-    const [ax,ay] = toC(-COURT_W/2-2, -COURT_H/2-2);
-    const [bx,by] = toC(COURT_W/2+2, COURT_H/2+2);
-    ctx.fillRect(ax, ay, bx-ax, by-ay);
-
-    ctx.fillStyle = 'rgba(255,255,255,0.03)';
-    for (let i = -COURT_W/2; i < COURT_W/2; i += 4) {{
-      if (Math.floor((i+COURT_W/2)/4) % 2 === 0) {{
-        const [sx,sy] = toC(i, -COURT_H/2);
-        const [ex,ey] = toC(i+4, COURT_H/2);
-        ctx.fillRect(sx, sy, ex-sx, ey-sy);
-      }}
-    }}
-
-    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-    ctx.lineWidth = 2;
-    const [b1x,b1y] = toC(-COURT_W/2,-COURT_H/2);
-    const [b2x,b2y] = toC(COURT_W/2,COURT_H/2);
-    ctx.strokeRect(b1x,b1y,b2x-b1x,b2y-b1y);
-
-    const [c1x,c1y] = toC(0,-COURT_H/2);
-    const [c2x,c2y] = toC(0,COURT_H/2);
-    ctx.beginPath(); ctx.moveTo(c1x,c1y); ctx.lineTo(c2x,c2y); ctx.stroke();
-
-    const [ccx,ccy] = toC(0,0);
-    ctx.beginPath(); ctx.arc(ccx,ccy,CENTER_R2*scale,0,Math.PI*2); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.beginPath(); ctx.arc(ccx,ccy,3,0,Math.PI*2); ctx.fill();
-
-    const hp = PENALTY_W2/2;
-    const [l1x,l1y] = toC(-COURT_W/2,-hp);
-    const [l2x,l2y] = toC(-COURT_W/2+PENALTY_LEN,hp);
-    ctx.strokeRect(l1x,l1y,l2x-l1x,l2y-l1y);
-    const [r1x,r1y] = toC(COURT_W/2-PENALTY_LEN,-hp);
-    const [r2x,r2y] = toC(COURT_W/2,hp);
-    ctx.strokeRect(r1x,r1y,r2x-r1x,r2y-r1y);
-
-    ctx.lineWidth = 3; ctx.strokeStyle = '#ccc'; ctx.fillStyle = 'rgba(255,255,255,0.1)';
-    const hg = GOAL_W2/2;
-    const [gl1x,gl1y] = toC(-COURT_W/2-GOAL_D2,-hg);
-    const [gl2x,gl2y] = toC(-COURT_W/2,hg);
-    ctx.fillRect(gl1x,gl1y,gl2x-gl1x,gl2y-gl1y);
-    ctx.strokeRect(gl1x,gl1y,gl2x-gl1x,gl2y-gl1y);
-    const [gr1x,gr1y] = toC(COURT_W/2,-hg);
-    const [gr2x,gr2y] = toC(COURT_W/2+GOAL_D2,hg);
-    ctx.fillRect(gr1x,gr1y,gr2x-gr1x,gr2y-gr1y);
-    ctx.strokeRect(gr1x,gr1y,gr2x-gr1x,gr2y-gr1y);
-    ctx.lineWidth = 2;
-  }}
-
-  function drawPlayer(p, sel) {{
-    const [px,py] = toC(p.position.x, p.position.z);
-    const isHome = p.team === 'home';
-    const jc = isHome ? '#e53e3e' : '#3b82f6';
-
-    ctx.fillStyle = 'rgba(0,0,0,0.2)';
-    ctx.beginPath(); ctx.ellipse(px+2,py+2,PLAYER_R,PLAYER_R*0.7,0,0,Math.PI*2); ctx.fill();
-
-    if (sel) {{
-      ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(px,py,PLAYER_R+5,0,Math.PI*2); ctx.stroke();
-    }}
-
-    const g = ctx.createRadialGradient(px-3,py-3,2,px,py,PLAYER_R);
-    g.addColorStop(0, lighten(jc,30)); g.addColorStop(1, jc);
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(px,py,PLAYER_R,0,Math.PI*2); ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 1.5; ctx.stroke();
-
-    const d = isHome ? 1 : -1;
-    ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.beginPath();
-    ctx.moveTo(px+d*(PLAYER_R+4),py);
-    ctx.lineTo(px+d*(PLAYER_R-2),py-4);
-    ctx.lineTo(px+d*(PLAYER_R-2),py+4);
-    ctx.closePath(); ctx.fill();
-
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold '+Math.max(11,PLAYER_R-2)+'px Arial';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 2;
-    ctx.fillText(p.number.toString(), px, py+1);
-    ctx.shadowBlur = 0;
-  }}
-
-  function drawBall(bx,bz,sel,bh) {{
-    const [px,py] = toC(bx,bz);
-    const dr = BALL_R + (bh||0)*2;
-    const so = (bh||0)*3;
-
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    ctx.beginPath(); ctx.ellipse(px+so,py+so,BALL_R*0.8,BALL_R*0.5,0,0,Math.PI*2); ctx.fill();
-
-    if (sel) {{
-      ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(px,py,dr+5,0,Math.PI*2); ctx.stroke();
-    }}
-
-    const g = ctx.createRadialGradient(px-2,py-2,1,px,py,dr);
-    g.addColorStop(0,'#fff'); g.addColorStop(0.7,'#e8e8e8'); g.addColorStop(1,'#ccc');
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(px,py,dr,0,Math.PI*2); ctx.fill();
-
-    ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.lineWidth = 1;
-    for (let i=0;i<5;i++) {{
-      const a=(i/5)*Math.PI*2-Math.PI/2; const r=dr*0.55;
-      ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(px+Math.cos(a)*r,py+Math.sin(a)*r); ctx.stroke();
-    }}
-    ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(px,py,dr,0,Math.PI*2); ctx.stroke();
-  }}
-
-  function lighten(hex, amt) {{
-    let r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
-    return '#'+[Math.min(255,r+amt),Math.min(255,g+amt),Math.min(255,b+amt)].map(c=>c.toString(16).padStart(2,'0')).join('');
-  }}
-
-  let dragging2 = null, selected2 = null, ballH2 = 0;
-  let animPhase2 = 0, animProg2 = 0, lastT2 = 0;
-
-  function hit(cx,cy) {{
-    const [bx2,by2] = toC(ballData.x, ballData.z);
-    if ((cx-bx2)**2+(cy-by2)**2 <= (BALL_R+6)**2) return {{type:'ball'}};
-    for (let i=playersData.length-1;i>=0;i--) {{
-      const p=playersData[i];
-      const [px2,py2] = toC(p.position.x,p.position.z);
-      if ((cx-px2)**2+(cy-py2)**2 <= (PLAYER_R+4)**2) return {{type:'player',id:p.id,index:i}};
-    }}
-    return null;
-  }}
-
-  canvas.addEventListener('pointerdown',(e) => {{
-    if (e.button!==0) return;
-    const r=canvas.getBoundingClientRect();
-    const h2=hit(e.clientX-r.left,e.clientY-r.top);
-    if (h2) {{ dragging2=h2; selected2=h2; canvas.setPointerCapture(e.pointerId); }}
-    else {{ selected2=null; }}
-    draw2();
-  }});
-
-  canvas.addEventListener('pointermove',(e) => {{
-    if (!dragging2) return;
-    const r=canvas.getBoundingClientRect();
-    const [wx,wz]=toW(e.clientX-r.left,e.clientY-r.top);
-    const cx2=Math.max(-COURT_W/2,Math.min(COURT_W/2,wx));
-    const cz2=Math.max(-COURT_H/2,Math.min(COURT_H/2,wz));
-    if (dragging2.type==='player') {{ playersData[dragging2.index].position.x=cx2; playersData[dragging2.index].position.z=cz2; }}
-    else {{ ballData.x=cx2; ballData.z=cz2; }}
-    draw2();
-  }});
-
-  canvas.addEventListener('pointerup',() => {{ dragging2=null; }});
-
-  function lerp2(a,b,t) {{ return a+(b-a)*t; }}
-
-  function animLoop2(ts) {{
-    if (!isPlaying || framesData.length<2) return;
-    if (!lastT2) lastT2=ts;
-    const dt=(ts-lastT2)/1000; lastT2=ts;
-    animProg2 += dt*0.5;
-    if (animProg2>=1) {{
-      animProg2=0; animPhase2++;
-      if (animPhase2>=framesData.length-1) {{ animPhase2=0; isPlaying=false; ballH2=0; draw2(); return; }}
-    }}
-    const from=framesData[animPhase2], to=framesData[animPhase2+1];
-    from.players.forEach((fp,i) => {{
-      const tp=to.players[i]; const pd=playersData.find(p=>p.id===fp.id);
-      if (pd&&tp) {{ pd.position.x=lerp2(fp.position.x,tp.position.x,animProg2); pd.position.z=lerp2(fp.position.z,tp.position.z,animProg2); }}
-    }});
-    const fb=from.ball_position, tb=to.ball_position;
-    ballData.x=lerp2(fb.x,tb.x,animProg2); ballData.z=lerp2(fb.z,tb.z,animProg2);
-    const traj=to.ball_trajectory||'linear', ph=to.ball_peak_height||0;
-    if (traj==='parabolic'&&ph>0) {{ const t=animProg2; ballH2=(1-t)*(1-t)*0+2*(1-t)*t*ph+t*t*0; }}
-    else {{ ballH2=0; }}
-    draw2();
-    requestAnimationFrame(animLoop2);
-  }}
-
-  if (isPlaying && framesData.length>=2) {{ requestAnimationFrame(animLoop2); }}
-
-  function draw2() {{
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    ctx.fillStyle='#1a472a'; ctx.fillRect(0,0,canvas.width,canvas.height);
-    drawCourt();
-    playersData.filter(p=>p.team==='home').forEach(p=>drawPlayer(p,selected2&&selected2.type==='player'&&selected2.id===p.id));
-    playersData.filter(p=>p.team==='away').forEach(p=>drawPlayer(p,selected2&&selected2.type==='player'&&selected2.id===p.id));
-    drawBall(ballData.x,ballData.z,selected2&&selected2.type==='ball',ballH2);
-  }}
-
-  resize(); draw2();
-  window.addEventListener('resize',() => {{ resize(); draw2(); }});
+  console.error('Three.js error:', err);
 }}
 </script>
 </body>
