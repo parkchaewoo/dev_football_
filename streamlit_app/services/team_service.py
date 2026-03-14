@@ -25,6 +25,7 @@ def create_team(name: str, description: str, user_id: str) -> dict | None:
         "description": description,
         "leaderId": user_id,
         "members": [user_id],
+        "admins": [user_id],  # 리더는 자동으로 운영진
         "inviteCode": _generate_invite_code(),
         "createdAt": int(time.time() * 1000),
     }
@@ -89,6 +90,50 @@ def leave_team(team_id: str, user_id: str) -> None:
     db.collection("users").document(user_id).update({
         "teams": ArrayRemove([team_id])
     })
+
+
+def set_admin(team_id: str, user_id: str) -> bool:
+    """팀 운영진으로 지정."""
+    db = get_firestore_client()
+    if not db:
+        return False
+    db.collection("teams").document(team_id).update({
+        "admins": ArrayUnion([user_id])
+    })
+    return True
+
+
+def remove_admin(team_id: str, user_id: str) -> bool:
+    """팀 운영진 해제."""
+    db = get_firestore_client()
+    if not db:
+        return False
+    db.collection("teams").document(team_id).update({
+        "admins": ArrayRemove([user_id])
+    })
+    return True
+
+
+def get_team(team_id: str) -> dict | None:
+    """팀 정보 조회 (admins 포함)."""
+    db = get_firestore_client()
+    if not db:
+        return None
+    doc = db.collection("teams").document(team_id).get()
+    if doc.exists:
+        data = doc.to_dict()
+        data["id"] = doc.id
+        return data
+    return None
+
+
+def is_admin(team: dict, user_id: str) -> bool:
+    """해당 유저가 팀 운영진인지 확인."""
+    if not team:
+        return False
+    if team.get("leaderId") == user_id:
+        return True
+    return user_id in team.get("admins", [])
 
 
 def delete_team(team_id: str) -> None:

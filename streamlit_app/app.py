@@ -1,13 +1,11 @@
 import streamlit as st
 import json
 import copy
-from dataclasses import asdict
 from utils.models import (
     create_default_strategy, create_default_phase,
     strategy_to_json, strategy_from_json, strategy_from_firestore,
-    generate_id, Position3D, Player, Frame, Phase
+    generate_id, Phase, Frame,
 )
-from components.tactical_board import generate_board_html, render_tactical_board
 from services.firebase_init import is_firebase_configured
 
 # Firebase 서비스는 지연 import (firebase-admin 미설치 시에도 앱 동작)
@@ -369,239 +367,19 @@ with st.sidebar:
             st.rerun()
 
 
-# ===== MAIN CONTENT =====
+# ===== MAIN CONTENT - TAB NAVIGATION =====
+st.session_state.firebase_ok = firebase_ok
 
-# Frame controls
-frame_col1, frame_col2, frame_col3, frame_col4, frame_col5 = st.columns([2, 2, 2, 2, 4])
+tab1, tab2, tab3 = st.tabs(["⚽ 전술 보드", "🏥 부상/병원", "📋 게시판"])
 
-with frame_col1:
-    if st.button("➕ 프레임 추가"):
-        last_frame = current_phase.frames[-1]
-        new_frame = Frame(
-            id=generate_id(),
-            players=copy.deepcopy(last_frame.players),
-            ball_position=copy.deepcopy(last_frame.ball_position),
-        )
-        current_phase.frames.append(new_frame)
-        st.session_state.current_frame_idx = len(current_phase.frames) - 1
-        st.rerun()
+with tab1:
+    from pages.tactical_board import render_tactical_board_page
+    render_tactical_board_page()
 
-with frame_col2:
-    if len(current_phase.frames) > 1:
-        if st.button("🗑️ 프레임 삭제"):
-            current_phase.frames.pop(frame_idx)
-            st.session_state.current_frame_idx = min(frame_idx, len(current_phase.frames) - 1)
-            st.rerun()
+with tab2:
+    from pages.injury_hospital import render_injury_hospital_page
+    render_injury_hospital_page()
 
-with frame_col3:
-    frame_options = [f"프레임 {i+1}" for i in range(len(current_phase.frames))]
-    sel_frame = st.selectbox(
-        "프레임", range(len(frame_options)),
-        format_func=lambda i: frame_options[i],
-        index=frame_idx,
-        label_visibility="collapsed",
-    )
-    if sel_frame != frame_idx:
-        st.session_state.current_frame_idx = sel_frame
-        st.rerun()
-
-with frame_col4:
-    can_play = len(current_phase.frames) >= 2
-    play_label = "▶ 재생" if can_play else "▶ (2프레임 이상)"
-    is_playing = st.button(play_label, disabled=not can_play)
-
-with frame_col5:
-    ball_h = st.slider(
-        "⚽ 공 높이",
-        min_value=0.0, max_value=8.0, value=float(current_frame.ball_position.y),
-        step=0.1,
-        format="%.1fm",
-        label_visibility="collapsed",
-    )
-    if abs(ball_h - current_frame.ball_position.y) > 0.01:
-        current_frame.ball_position.y = ball_h
-
-# Ball peak height control (parabolic arc between frames)
-if len(current_phase.frames) >= 2:
-    peak_col1, peak_col2 = st.columns([3, 9])
-    with peak_col1:
-        st.markdown("**공 궤적 최고 높이**")
-    with peak_col2:
-        peak_h = st.slider(
-            "공 최고 높이 (포물선)",
-            min_value=0.0, max_value=10.0,
-            value=float(getattr(current_frame, 'ball_peak_height', 0.0)),
-            step=0.5,
-            format="%.1fm",
-            help="프레임 간 이동 시 공이 올라갔다 내려오는 최고 높이 (로브패스, 슈팅 등)",
-            key="ball_peak_height_slider",
-        )
-        if abs(peak_h - current_frame.ball_peak_height) > 0.01:
-            current_frame.ball_peak_height = peak_h
-
-# Prepare frames data for animation
-frames_for_js = []
-if is_playing:
-    for f in current_phase.frames:
-        frames_for_js.append(asdict(f))
-
-# 3D Board (bidirectional component - drag positions are saved!)
-drag_result = render_tactical_board(
-    players=current_frame.players,
-    ball_position=current_frame.ball_position,
-    frames_data=json.dumps(frames_for_js),
-    is_playing=is_playing,
-    height=600,
-    key="tactical_board",
-)
-
-# Apply dragged positions from 3D board back to session state
-if drag_result and isinstance(drag_result, dict):
-    changed = False
-    # Update player positions
-    if "players" in drag_result:
-        for pd in drag_result["players"]:
-            for p in current_frame.players:
-                if p.id == pd["id"]:
-                    if abs(p.position.x - pd["x"]) > 0.01 or abs(p.position.z - pd["z"]) > 0.01:
-                        p.position.x = pd["x"]
-                        p.position.z = pd["z"]
-                        changed = True
-    # Update ball position
-    if "ball" in drag_result:
-        bd = drag_result["ball"]
-        if (abs(current_frame.ball_position.x - bd["x"]) > 0.01 or
-                abs(current_frame.ball_position.z - bd["z"]) > 0.01):
-            current_frame.ball_position.x = bd["x"]
-            current_frame.ball_position.z = bd["z"]
-            changed = True
-
-# Info
-st.caption(
-    f"📋 {strategy.name or '(이름 없음)'} | "
-    f"📍 {current_phase.name} | "
-    f"🎞️ 프레임 {frame_idx + 1}/{len(current_phase.frames)} | "
-    f"⚽ 공 높이: {'지면' if ball_h <= 0.3 else f'{ball_h:.1f}m'}"
-)
-
-# ===== POSITION EDITOR (정밀 좌표 편집) =====
-with st.expander("📍 선수/공 위치 정밀 편집", expanded=False):
-    st.caption("3D 보드에서 드래그하면 자동 저장됩니다. 아래에서 정밀 좌표를 수정할 수도 있습니다.")
-
-    # Ball position
-    st.markdown("**⚽ 공 위치**")
-    ball_cols = st.columns(3)
-    with ball_cols[0]:
-        new_ball_x = st.number_input(
-            "공 X (좌우)", min_value=-20.0, max_value=20.0,
-            value=float(current_frame.ball_position.x), step=0.5,
-            key="ball_x_input", format="%.1f",
-        )
-    with ball_cols[1]:
-        new_ball_z = st.number_input(
-            "공 Z (상하)", min_value=-10.0, max_value=10.0,
-            value=float(current_frame.ball_position.z), step=0.5,
-            key="ball_z_input", format="%.1f",
-        )
-    with ball_cols[2]:
-        new_ball_y = st.number_input(
-            "공 높이 (Y)", min_value=0.0, max_value=8.0,
-            value=float(current_frame.ball_position.y), step=0.1,
-            key="ball_y_input", format="%.1f",
-        )
-    if (abs(new_ball_x - current_frame.ball_position.x) > 0.01 or
-            abs(new_ball_z - current_frame.ball_position.z) > 0.01 or
-            abs(new_ball_y - current_frame.ball_position.y) > 0.01):
-        current_frame.ball_position.x = new_ball_x
-        current_frame.ball_position.z = new_ball_z
-        current_frame.ball_position.y = new_ball_y
-
-    st.divider()
-
-    # Player positions
-    home_players = [p for p in current_frame.players if p.team == "home"]
-    away_players = [p for p in current_frame.players if p.team == "away"]
-
-    team_col1, team_col2 = st.columns(2)
-    with team_col1:
-        st.markdown("**🔴 홈 팀**")
-        for p in home_players:
-            pc1, pc2 = st.columns(2)
-            with pc1:
-                nx = st.number_input(
-                    f"#{p.number} X", min_value=-20.0, max_value=20.0,
-                    value=float(p.position.x), step=0.5,
-                    key=f"p_{p.id}_x", format="%.1f",
-                )
-            with pc2:
-                nz = st.number_input(
-                    f"#{p.number} Z", min_value=-10.0, max_value=10.0,
-                    value=float(p.position.z), step=0.5,
-                    key=f"p_{p.id}_z", format="%.1f",
-                )
-            if abs(nx - p.position.x) > 0.01 or abs(nz - p.position.z) > 0.01:
-                p.position.x = nx
-                p.position.z = nz
-
-    with team_col2:
-        st.markdown("**🔵 어웨이 팀**")
-        for p in away_players:
-            pc1, pc2 = st.columns(2)
-            with pc1:
-                nx = st.number_input(
-                    f"#{p.number} X", min_value=-20.0, max_value=20.0,
-                    value=float(p.position.x), step=0.5,
-                    key=f"p_{p.id}_x", format="%.1f",
-                )
-            with pc2:
-                nz = st.number_input(
-                    f"#{p.number} Z", min_value=-10.0, max_value=10.0,
-                    value=float(p.position.z), step=0.5,
-                    key=f"p_{p.id}_z", format="%.1f",
-                )
-            if abs(nx - p.position.x) > 0.01 or abs(nz - p.position.z) > 0.01:
-                p.position.x = nx
-                p.position.z = nz
-
-# ===== SOCIAL SECTION (댓글/좋아요) =====
-if firebase_ok and st.session_state.firestore_strategy_id:
-    from services.social_service import add_comment, get_comments, delete_comment, toggle_like, has_liked
-    import datetime
-
-    strat_id = st.session_state.firestore_strategy_id
-    st.divider()
-
-    social_col1, social_col2 = st.columns([1, 4])
-
-    with social_col1:
-        liked = has_liked(strat_id, user["uid"])
-        like_label = "♥ 좋아요 취소" if liked else "♡ 좋아요"
-        if st.button(like_label, key="like_btn"):
-            toggle_like(strat_id, user["uid"])
-            st.rerun()
-
-    with social_col2:
-        st.markdown("**💬 댓글**")
-
-    comments = get_comments(strat_id)
-    for c in comments:
-        col_cmt, col_del = st.columns([9, 1])
-        with col_cmt:
-            ts = c.get("createdAt", 0)
-            date_str = datetime.datetime.fromtimestamp(ts / 1000).strftime("%m/%d") if ts else ""
-            st.markdown(
-                f"**{c.get('authorName', '?')}**: {c.get('text', '')} "
-                f"<span style='color:#666;font-size:12px;'>{date_str}</span>",
-                unsafe_allow_html=True,
-            )
-        with col_del:
-            if c.get("authorId") == user["uid"]:
-                if st.button("×", key=f"del_c_{c['id']}"):
-                    delete_comment(c["id"])
-                    st.rerun()
-
-    comment_text = st.text_input("댓글 입력", key="comment_input", placeholder="댓글을 입력하세요...")
-    if st.button("댓글 등록", key="submit_comment"):
-        if comment_text.strip():
-            add_comment(strat_id, user["uid"], user["displayName"], comment_text.strip())
-            st.rerun()
+with tab3:
+    from pages.team_board import render_team_board_page
+    render_team_board_page()

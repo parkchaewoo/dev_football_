@@ -12,6 +12,8 @@ import StrategyForm from './components/Strategy/StrategyForm';
 import StrategyFeed from './components/Strategy/StrategyFeed';
 import CommentSection from './components/Social/CommentSection';
 import LikeButton from './components/Social/LikeButton';
+import InjuryHospital from './components/Injury/InjuryHospital';
+import TeamBoard from './components/Board/TeamBoard';
 import { useAnimation } from './hooks/useAnimation';
 import type { Player, Phase, Frame, Team, StrategyMeta } from './types';
 import { generateId } from './utils/storage';
@@ -65,6 +67,8 @@ function TacticalBoardApp() {
   const [showFeed, setShowFeed] = useState<'team' | 'public' | null>(null);
   const [showChat, setShowChat] = useState(true);
   const [showComments, setShowComments] = useState(false);
+  const [showInjury, setShowInjury] = useState(false);
+  const [showBoard, setShowBoard] = useState(false);
 
   const animation = useAnimation(phases);
 
@@ -243,6 +247,12 @@ function TacticalBoardApp() {
           <button onClick={() => setShowFeed('public')} className="px-3 py-1 text-sm bg-indigo-600 rounded hover:bg-indigo-700">
             공개 전술
           </button>
+          <button onClick={() => setShowInjury(true)} className="px-3 py-1 text-sm bg-emerald-600 rounded hover:bg-emerald-700">
+            부상/병원
+          </button>
+          <button onClick={() => setShowBoard(true)} className="px-3 py-1 text-sm bg-amber-600 rounded hover:bg-amber-700">
+            게시판
+          </button>
           <button
             onClick={() => setShowChat((v) => !v)}
             className={`px-3 py-1 text-sm rounded ${showChat ? 'bg-purple-600' : 'bg-gray-700'}`}
@@ -348,6 +358,12 @@ function TacticalBoardApp() {
           onLoad={handleLoadFromFeed}
           onClose={() => setShowFeed(null)}
         />
+      )}
+      {showInjury && (
+        <InjuryHospital onClose={() => setShowInjury(false)} />
+      )}
+      {showBoard && (
+        <TeamBoard team={currentTeam} onClose={() => setShowBoard(false)} />
       )}
     </div>
   );

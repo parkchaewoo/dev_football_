@@ -85,3 +85,16 @@ export interface Comment {
   text: string;
   createdAt: number;
 }
+
+export interface BoardPost {
+  id: string;
+  title: string;
+  content: string;
+  authorId: string;
+  authorName: string;
+  teamId: string;
+  isSecret: boolean;
+  passwordHash: string;
+  createdAt: number;
+  updatedAt: number;
+}
