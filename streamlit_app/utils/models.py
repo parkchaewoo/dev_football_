@@ -113,3 +113,40 @@ def strategy_from_json(json_str: str) -> Strategy:
         data["id"], data["name"], data["description"],
         phases, data.get("created_at", time.time())
     )
+
+
+def strategy_from_firestore(data: dict) -> Strategy:
+    """Firestore 문서 데이터에서 Strategy 객체 생성."""
+    phases = []
+    for p in data.get("phases", []):
+        frames = []
+        for f in p.get("frames", []):
+            players = []
+            for pl in f.get("players", []):
+                pos = pl.get("position", {})
+                players.append(Player(
+                    pl.get("id", ""),
+                    pl.get("team", "home"),
+                    pl.get("number", 1),
+                    Position3D(pos.get("x", 0), pos.get("y", 0), pos.get("z", 0)),
+                ))
+            bp = f.get("ball_position", f.get("ballPosition", {}))
+            frames.append(Frame(
+                f.get("id", generate_id()),
+                players,
+                Position3D(bp.get("x", 0), bp.get("y", 0.22), bp.get("z", 0)),
+            ))
+        phases.append(Phase(
+            p.get("id", generate_id()),
+            p.get("name", ""),
+            p.get("description", ""),
+            frames,
+            p.get("order", 0),
+        ))
+    return Strategy(
+        data.get("id", generate_id()),
+        data.get("name", ""),
+        data.get("description", ""),
+        phases,
+        data.get("created_at", data.get("createdAt", time.time())),
+    )
