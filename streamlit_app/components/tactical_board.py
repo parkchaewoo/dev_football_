@@ -29,9 +29,7 @@ def generate_board_html(
   }}
   #scene {{
     transform-style: preserve-3d;
-    transform: rotateX(55deg) rotateZ(0deg);
     position:relative;
-    transition: transform 0.05s linear;
   }}
   #court {{
     position:relative;
@@ -41,7 +39,6 @@ def generate_board_html(
     box-shadow: 0 0 60px rgba(0,0,0,0.5), 0 20px 40px rgba(0,0,0,0.3);
     transform-style: preserve-3d;
   }}
-  /* Grass stripes */
   #court::before {{
     content:'';
     position:absolute; top:0; left:0; right:0; bottom:0;
@@ -64,12 +61,6 @@ def generate_board_html(
     position:absolute;
     transform-style: preserve-3d;
     pointer-events:none;
-  }}
-  .goal-frame {{
-    position:absolute;
-    background: rgba(200,200,200,0.9);
-    border: 1px solid #aaa;
-    transform-style: preserve-3d;
   }}
   .goal-net {{
     position:absolute;
@@ -94,15 +85,19 @@ def generate_board_html(
     transform: rotateX(-90deg);
     border-radius: 2px;
   }}
-  .player {{
+  /* === GPU-accelerated moving elements === */
+  .player, .ball {{
     position:absolute;
+    left:0; top:0;
+    will-change: transform;
     transform-style: preserve-3d;
     cursor: grab;
-    z-index: 10;
     user-select:none;
     -webkit-user-select:none;
   }}
-  .player:active {{ cursor:grabbing; }}
+  .player {{ z-index:10; }}
+  .ball {{ z-index:9; }}
+  .player:active, .ball:active {{ cursor:grabbing; }}
   .player-shadow {{
     position:absolute;
     border-radius:50%;
@@ -117,8 +112,8 @@ def generate_board_html(
     pointer-events: none;
   }}
   .player-torso {{
-    border-radius: 6px 6px 2px 2px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    border-radius: 4px 4px 1px 1px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
   }}
   .player-head {{
     position:absolute;
@@ -134,22 +129,14 @@ def generate_board_html(
   }}
   .player-ring {{
     position:absolute;
-    border: 3px solid #ffd700;
+    border: 2px solid #ffd700;
     border-radius: 50%;
     opacity: 0;
     pointer-events:none;
-    box-shadow: 0 0 8px rgba(255,215,0,0.5);
+    box-shadow: 0 0 6px rgba(255,215,0,0.5);
+    transition: opacity 0.15s;
   }}
   .player.selected .player-ring {{ opacity:1; }}
-  .ball {{
-    position:absolute;
-    transform-style: preserve-3d;
-    cursor:grab;
-    z-index:9;
-    user-select:none;
-    -webkit-user-select:none;
-  }}
-  .ball:active {{ cursor:grabbing; }}
   .ball-shadow {{
     position:absolute;
     border-radius:50%;
@@ -164,7 +151,6 @@ def generate_board_html(
     transform-origin: bottom center;
     transform: rotateX(-90deg);
     pointer-events:none;
-    /* Pentagon pattern via box-shadow */
     border: 1px solid rgba(0,0,0,0.1);
   }}
   .ball-ring {{
@@ -173,6 +159,7 @@ def generate_board_html(
     border-radius:50%;
     opacity:0;
     pointer-events:none;
+    transition: opacity 0.15s;
   }}
   .ball.selected .ball-ring {{ opacity:1; }}
   #info {{
@@ -184,6 +171,17 @@ def generate_board_html(
     padding:4px 14px; border-radius:12px;
     white-space:nowrap;
   }}
+  /* Frame indicator */
+  #frame-indicator {{
+    position:absolute; top:8px; left:50%;
+    transform:translateX(-50%);
+    color:rgba(255,255,255,0.8); font-size:13px;
+    pointer-events:none; z-index:100;
+    background:rgba(0,0,0,0.5);
+    padding:4px 16px; border-radius:12px;
+    opacity:0; transition: opacity 0.3s;
+  }}
+  #frame-indicator.visible {{ opacity:1; }}
 </style>
 </head>
 <body>
@@ -192,18 +190,24 @@ def generate_board_html(
     <div id="court"></div>
   </div>
 </div>
+<div id="frame-indicator"></div>
 <div id="info">드래그: 선수/공 이동 | 우클릭 드래그: 회전 | 스크롤: 줌</div>
 
 <script>
 (function() {{
+  'use strict';
+
   // ===== CONFIG =====
-  const CW = 40, CH = 20;                // Court size in game units
-  const SCALE = 14;                        // Pixels per game unit
+  // Real futsal court: 40m x 20m
+  // Player shoulder width ~0.5m, ball diameter ~0.21m
+  const CW = 40, CH = 20;
+  const SCALE = 18;                        // px per meter (court: 720x360px)
   const PX_W = CW * SCALE, PX_H = CH * SCALE;
   const PENALTY_LEN = 6, PENALTY_W = 12, CENTER_R = 3;
-  const GOAL_W = 3, GOAL_D = 1.5, GOAL_H_PX = 40;
-  const P_SIZE = 28;                       // Player diameter in px
-  const B_SIZE = 18;                       // Ball diameter in px
+  const GOAL_W = 3, GOAL_D = 1.5, GOAL_H_PX = 36;  // 2m goal height
+  const P_SIZE = 16;                       // ~0.9m footprint (slightly oversized for usability)
+  const B_SIZE = 8;                        // ~0.44m (slightly oversized for visibility)
+  const ANIM_SPEED = 0.6;  // frames per second transition
 
   let playersData = {players_json};
   let ballData = {ball_json};
@@ -213,31 +217,25 @@ def generate_board_html(
   const court = document.getElementById('court');
   const sceneEl = document.getElementById('scene');
   const viewport = document.getElementById('viewport');
+  const frameInd = document.getElementById('frame-indicator');
 
   court.style.width = PX_W + 'px';
   court.style.height = PX_H + 'px';
 
   // ===== COURT MARKINGS =====
-  function addLineH(x, y, w, h) {{
+  function addLine(x, y, w, h) {{
     const d = document.createElement('div');
     d.className = 'court-line';
-    d.style.cssText = 'left:'+x+'px;top:'+y+'px;width:'+w+'px;height:'+(h||2)+'px;';
-    court.appendChild(d);
-  }}
-  function addLineV(x, y, w, h) {{
-    const d = document.createElement('div');
-    d.className = 'court-line';
-    d.style.cssText = 'left:'+x+'px;top:'+y+'px;width:'+(w||2)+'px;height:'+h+'px;';
+    d.style.cssText = 'left:'+x+'px;top:'+y+'px;width:'+w+'px;height:'+h+'px;';
     court.appendChild(d);
   }}
 
-  // Center line
-  addLineV(PX_W/2 - 1, 0, 2, PX_H);
+  addLine(PX_W/2-1, 0, 2, PX_H);  // center
   // Center circle
   const ccSize = CENTER_R * 2 * SCALE;
   const ccEl = document.createElement('div');
   ccEl.className = 'court-circle';
-  ccEl.style.cssText = 'left:'+(PX_W/2 - ccSize/2)+'px;top:'+(PX_H/2 - ccSize/2)+'px;width:'+ccSize+'px;height:'+ccSize+'px;';
+  ccEl.style.cssText = 'left:'+(PX_W/2-ccSize/2)+'px;top:'+(PX_H/2-ccSize/2)+'px;width:'+ccSize+'px;height:'+ccSize+'px;';
   court.appendChild(ccEl);
   // Center spot
   const spotEl = document.createElement('div');
@@ -245,16 +243,14 @@ def generate_board_html(
   court.appendChild(spotEl);
   // Penalty areas
   const penW = PENALTY_W * SCALE, penL = PENALTY_LEN * SCALE;
-  // Left
-  addLineH(0, (PX_H - penW)/2, penL, 2);
-  addLineH(0, (PX_H + penW)/2, penL, 2);
-  addLineV(penL, (PX_H - penW)/2, 2, penW);
-  // Right
-  addLineH(PX_W - penL, (PX_H - penW)/2, penL, 2);
-  addLineH(PX_W - penL, (PX_H + penW)/2, penL, 2);
-  addLineV(PX_W - penL, (PX_H - penW)/2, 2, penW);
+  addLine(0, (PX_H-penW)/2, penL, 2);
+  addLine(0, (PX_H+penW)/2, penL, 2);
+  addLine(penL, (PX_H-penW)/2, 2, penW);
+  addLine(PX_W-penL, (PX_H-penW)/2, penL, 2);
+  addLine(PX_W-penL, (PX_H+penW)/2, penL, 2);
+  addLine(PX_W-penL, (PX_H-penW)/2, 2, penW);
 
-  // ===== GOALS (3D upright) =====
+  // ===== GOALS =====
   function addGoal(side) {{
     const gW = GOAL_W * SCALE;
     const gD = GOAL_D * SCALE;
@@ -262,41 +258,40 @@ def generate_board_html(
     g.className = 'goal';
     const gx = side === 'left' ? -gD : PX_W;
     g.style.cssText = 'left:'+gx+'px;top:'+(PX_H/2-gW/2)+'px;width:'+gD+'px;height:'+gW+'px;';
-
-    // Net background
     const net = document.createElement('div');
     net.className = 'goal-net';
     net.style.cssText = 'left:0;top:0;width:'+gD+'px;height:'+gW+'px;';
     g.appendChild(net);
-
-    // Left post (standing up in 3D)
+    const postX = side==='left' ? gD-3 : 0;
     const lp = document.createElement('div');
     lp.className = 'goal-post';
-    lp.style.cssText = 'left:' + (side==='left'?gD-3:0) + 'px;top:0;width:4px;height:'+GOAL_H_PX+'px;';
+    lp.style.cssText = 'left:'+postX+'px;top:0;width:4px;height:'+GOAL_H_PX+'px;';
     g.appendChild(lp);
-    // Right post
     const rp = document.createElement('div');
     rp.className = 'goal-post';
-    rp.style.cssText = 'left:' + (side==='left'?gD-3:0) + 'px;top:'+(gW-4)+'px;width:4px;height:'+GOAL_H_PX+'px;';
+    rp.style.cssText = 'left:'+postX+'px;top:'+(gW-4)+'px;width:4px;height:'+GOAL_H_PX+'px;';
     g.appendChild(rp);
-    // Crossbar
     const bar = document.createElement('div');
     bar.className = 'goal-bar';
-    bar.style.cssText = 'left:' + (side==='left'?gD-3:0) + 'px;top:0;width:4px;height:'+gW+'px;transform:rotateX(-90deg) translateZ(-'+(GOAL_H_PX-2)+'px);';
+    bar.style.cssText = 'left:'+postX+'px;top:0;width:4px;height:'+gW+'px;transform:rotateX(-90deg) translateZ(-'+(GOAL_H_PX-2)+'px);';
     g.appendChild(bar);
-
     court.appendChild(g);
   }}
   addGoal('left');
   addGoal('right');
 
-  // ===== COORD CONVERSION =====
-  // Game coords: x=[-20,20] (left-right), z=[-10,10] (top-bottom)
+  // ===== COORD HELPERS =====
   function gameToPixel(gx, gz) {{
     return [PX_W/2 + gx * SCALE, PX_H/2 + gz * SCALE];
   }}
   function pixelToGame(px, py) {{
     return [(px - PX_W/2) / SCALE, (py - PX_H/2) / SCALE];
+  }}
+
+  // ===== GPU-ACCELERATED POSITION UPDATE =====
+  // Use translate3d instead of left/top for GPU compositing
+  function setPos(el, px, py) {{
+    el.style.transform = 'translate3d(' + px + 'px,' + py + 'px, 0)';
   }}
 
   // ===== CREATE PLAYERS =====
@@ -311,54 +306,57 @@ def generate_board_html(
     el.className = 'player';
     el.dataset.id = data.id;
     el.dataset.team = data.team;
-
-    const [px, py] = gameToPixel(data.position.x, data.position.z);
-    el.style.left = (px - P_SIZE/2) + 'px';
-    el.style.top = (py - P_SIZE/2) + 'px';
     el.style.width = P_SIZE + 'px';
     el.style.height = P_SIZE + 'px';
 
-    // Shadow on ground
+    // Initial position via translate3d
+    const [px, py] = gameToPixel(data.position.x, data.position.z);
+    setPos(el, px - P_SIZE/2, py - P_SIZE/2);
+
+    // Shadow
     const shadow = document.createElement('div');
     shadow.className = 'player-shadow';
     shadow.style.cssText = 'left:-4px;top:2px;width:'+(P_SIZE+8)+'px;height:'+(P_SIZE*0.6)+'px;';
     el.appendChild(shadow);
 
-    // 3D upright body
+    // 3D body
     const body = document.createElement('div');
     body.className = 'player-body';
     body.style.cssText = 'left:2px;bottom:0;width:'+(P_SIZE-4)+'px;height:'+(P_SIZE*1.6)+'px;';
-
-    // Torso
     const torso = document.createElement('div');
     torso.className = 'player-torso';
     torso.style.cssText = 'position:absolute;bottom:0;left:0;width:100%;height:65%;background:linear-gradient(180deg,'+color+' 0%,'+darkColor+' 100%);';
     body.appendChild(torso);
-
-    // Head
     const head = document.createElement('div');
     head.className = 'player-head';
     const headSize = P_SIZE * 0.5;
     head.style.cssText = 'top:0;left:50%;transform:translateX(-50%);width:'+headSize+'px;height:'+headSize+'px;';
     body.appendChild(head);
-
     el.appendChild(body);
 
-    // Number (flat on ground, always readable)
+    // Number
     const num = document.createElement('div');
     num.className = 'player-number';
     num.style.cssText = 'left:0;top:0;width:'+P_SIZE+'px;height:'+P_SIZE+'px;line-height:'+P_SIZE+'px;font-size:'+(P_SIZE*0.45)+'px;';
     num.textContent = data.number;
     el.appendChild(num);
 
-    // Selection ring
+    // Ring
     const ring = document.createElement('div');
     ring.className = 'player-ring';
     ring.style.cssText = 'left:-6px;top:-6px;width:'+(P_SIZE+12)+'px;height:'+(P_SIZE+12)+'px;';
     el.appendChild(ring);
 
     court.appendChild(el);
-    playerEls.push({{ el, data }});
+
+    const pObj = {{
+      el, data,
+      // Cache current pixel position for smooth updates
+      _px: px - P_SIZE/2,
+      _py: py - P_SIZE/2,
+    }};
+    playerEls.push(pObj);
+    return pObj;
   }}
 
   playersData.forEach(p => createPlayerEl(p));
@@ -384,53 +382,50 @@ def generate_board_html(
   ballRing.style.cssText = 'left:-5px;top:-5px;width:'+(B_SIZE+10)+'px;height:'+(B_SIZE+10)+'px;';
   ballEl.appendChild(ballRing);
 
-  function updateBallPos() {{
-    const [px, py] = gameToPixel(ballData.x, ballData.z);
-    ballEl.style.left = (px - B_SIZE/2) + 'px';
-    ballEl.style.top = (py - B_SIZE/2) + 'px';
+  let ball_px = 0, ball_py = 0;
+  function updateBallTransform(bx, bz) {{
+    const [px, py] = gameToPixel(bx, bz);
+    ball_px = px - B_SIZE/2;
+    ball_py = py - B_SIZE/2;
+    setPos(ballEl, ball_px, ball_py);
   }}
-  updateBallPos();
+  updateBallTransform(ballData.x, ballData.z);
   court.appendChild(ballEl);
 
   // ===== DRAG SYSTEM =====
   let dragging = null;
-  let dragOffset = {{ x:0, y:0 }};
+  let rotX = 55, rotZ = 0, currentZoom = 1;
 
   function getCourtPos(e) {{
-    const rect = court.getBoundingClientRect();
-    // Invert CSS 3D transform to get court-space coordinates
-    const m = new DOMMatrix(getComputedStyle(sceneEl).transform);
-    const inv = m.inverse();
+    // Use DOMMatrix to properly invert the 3D transform
     const vRect = viewport.getBoundingClientRect();
-    // Point relative to viewport center
     const cx = e.clientX - vRect.left - vRect.width/2;
     const cy = e.clientY - vRect.top - vRect.height/2;
-    // Apply inverse transform (simplified for rotateX only)
-    const cosX = Math.cos(55 * Math.PI / 180);
-    const py_court = cy / cosX;
-    const px_court = cx;
-    // Convert to court pixel coords
-    const courtPx = PX_W/2 + px_court / currentZoom;
-    const courtPy = PX_H/2 + py_court / currentZoom;
+    // Invert using current rotation angles
+    const cosX = Math.cos(rotX * Math.PI / 180);
+    const cosZ = Math.cos(rotZ * Math.PI / 180);
+    const sinZ = Math.sin(rotZ * Math.PI / 180);
+    // Undo rotateZ then scale
+    const ux = (cx * cosZ + cy * sinZ) / currentZoom;
+    const uy = (-cx * sinZ + cy * cosZ) / currentZoom;
+    // Undo rotateX (perspective division simplified)
+    const courtPx = PX_W/2 + ux;
+    const courtPy = PX_H/2 + uy / cosX;
     return [courtPx, courtPy];
   }}
 
   court.addEventListener('pointerdown', (e) => {{
-    if (e.button === 2) return; // right-click for rotation
+    if (e.button !== 0) return;
     const target = e.target.closest('.player, .ball');
     if (!target) {{
-      // Deselect
       document.querySelectorAll('.player.selected, .ball.selected').forEach(el => el.classList.remove('selected'));
       return;
     }}
-
     dragging = target;
     dragging.classList.add('selected');
-    // Deselect others
     document.querySelectorAll('.player.selected, .ball.selected').forEach(el => {{
       if (el !== dragging) el.classList.remove('selected');
     }});
-
     court.setPointerCapture(e.pointerId);
     e.preventDefault();
   }});
@@ -439,35 +434,37 @@ def generate_board_html(
     if (!dragging) return;
     const [cpx, cpy] = getCourtPos(e);
     const [gx, gz] = pixelToGame(cpx, cpy);
-    const clampedX = Math.max(-CW/2, Math.min(CW/2, gx));
-    const clampedZ = Math.max(-CH/2, Math.min(CH/2, gz));
+    const cx = Math.max(-CW/2, Math.min(CW/2, gx));
+    const cz = Math.max(-CH/2, Math.min(CH/2, gz));
 
     if (dragging.classList.contains('player')) {{
       const pid = dragging.dataset.id;
       const pObj = playerEls.find(p => p.data.id === pid);
       if (pObj) {{
-        pObj.data.position.x = clampedX;
-        pObj.data.position.z = clampedZ;
-        const [nx, ny] = gameToPixel(clampedX, clampedZ);
-        dragging.style.left = (nx - P_SIZE/2) + 'px';
-        dragging.style.top = (ny - P_SIZE/2) + 'px';
+        pObj.data.position.x = cx;
+        pObj.data.position.z = cz;
+        const [nx, ny] = gameToPixel(cx, cz);
+        pObj._px = nx - P_SIZE/2;
+        pObj._py = ny - P_SIZE/2;
+        setPos(dragging, pObj._px, pObj._py);
       }}
     }} else if (dragging.classList.contains('ball')) {{
-      ballData.x = clampedX;
-      ballData.z = clampedZ;
-      updateBallPos();
+      ballData.x = cx;
+      ballData.z = cz;
+      updateBallTransform(cx, cz);
     }}
   }});
 
-  court.addEventListener('pointerup', () => {{
-    dragging = null;
-  }});
+  court.addEventListener('pointerup', () => {{ dragging = null; }});
 
-  // ===== CAMERA ROTATION (right-click drag) =====
-  let rotX = 55, rotZ = 0;
-  let currentZoom = 1;
+  // ===== CAMERA ROTATION =====
   let isRotating = false;
   let rotStart = {{ x:0, y:0 }};
+
+  function updateSceneTransform() {{
+    sceneEl.style.transform = 'rotateX('+rotX+'deg) rotateZ('+rotZ+'deg) scale('+currentZoom+')';
+  }}
+  updateSceneTransform();
 
   viewport.addEventListener('contextmenu', e => e.preventDefault());
 
@@ -486,95 +483,122 @@ def generate_board_html(
     rotZ += dx * 0.3;
     rotX = Math.max(20, Math.min(80, rotX + dy * 0.3));
     rotStart = {{ x: e.clientX, y: e.clientY }};
-    sceneEl.style.transform = 'rotateX('+rotX+'deg) rotateZ('+rotZ+'deg) scale('+currentZoom+')';
+    updateSceneTransform();
   }});
 
   viewport.addEventListener('pointerup', (e) => {{
     if (e.button === 2) isRotating = false;
   }});
 
-  // Zoom
   viewport.addEventListener('wheel', (e) => {{
     e.preventDefault();
     currentZoom = Math.max(0.4, Math.min(2.5, currentZoom - e.deltaY * 0.001));
-    sceneEl.style.transform = 'rotateX('+rotX+'deg) rotateZ('+rotZ+'deg) scale('+currentZoom+')';
+    updateSceneTransform();
   }}, {{ passive: false }});
 
-  // Initial transform
-  sceneEl.style.transform = 'rotateX('+rotX+'deg) rotateZ('+rotZ+'deg) scale('+currentZoom+')';
-
-  // ===== ANIMATION PLAYBACK =====
+  // ===== SMOOTH ANIMATION PLAYBACK =====
   let animPhase = 0, animProgress = 0, lastTime = 0;
 
   function lerp(a, b, t) {{ return a + (b - a) * t; }}
 
-  function updatePlayerPos(pData) {{
-    const pObj = playerEls.find(p => p.data.id === pData.id);
-    if (pObj) {{
-      pObj.data.position.x = pData.position.x;
-      pObj.data.position.z = pData.position.z;
-      const [px, py] = gameToPixel(pData.position.x, pData.position.z);
-      pObj.el.style.left = (px - P_SIZE/2) + 'px';
-      pObj.el.style.top = (py - P_SIZE/2) + 'px';
-    }}
+  // Ease-in-out for natural movement feel
+  function easeInOut(t) {{
+    return t < 0.5 ? 2*t*t : -1+(4-2*t)*t;
   }}
 
   function animLoop(ts) {{
-    if (!isPlaying || framesData.length < 2) return;
+    if (!isPlaying || framesData.length < 2) {{
+      frameInd.classList.remove('visible');
+      return;
+    }}
     if (!lastTime) lastTime = ts;
     const delta = (ts - lastTime) / 1000;
     lastTime = ts;
 
-    animProgress += delta * 0.5;
+    animProgress += delta * ANIM_SPEED;
+
+    // Show frame indicator
+    frameInd.textContent = 'Frame ' + (animPhase+1) + ' / ' + framesData.length;
+    frameInd.classList.add('visible');
+
     if (animProgress >= 1) {{
       animProgress = 0;
       animPhase++;
       if (animPhase >= framesData.length - 1) {{
+        // Snap to final frame
+        const finalFrame = framesData[framesData.length - 1];
+        finalFrame.players.forEach(fp => {{
+          const pObj = playerEls.find(p => p.data.id === fp.id);
+          if (pObj) {{
+            const [px, py] = gameToPixel(fp.position.x, fp.position.z);
+            pObj._px = px - P_SIZE/2;
+            pObj._py = py - P_SIZE/2;
+            setPos(pObj.el, pObj._px, pObj._py);
+          }}
+        }});
+        updateBallTransform(finalFrame.ball_position.x, finalFrame.ball_position.z);
+
         animPhase = 0;
         isPlaying = false;
-        // Reset ball height visual
-        ballSphere.style.height = (B_SIZE * 1.4) + 'px';
-        ballSphere.style.bottom = '0px';
-        ballShadow.style.opacity = '1';
+        frameInd.textContent = 'Complete';
+        setTimeout(() => frameInd.classList.remove('visible'), 1500);
         return;
       }}
     }}
 
     const from = framesData[animPhase];
     const to = framesData[animPhase + 1];
+    const t = easeInOut(animProgress);
 
-    // Interpolate players
+    // Interpolate players (GPU-accelerated via translate3d)
     from.players.forEach((fp, i) => {{
       const tp = to.players[i];
-      if (tp) {{
-        const ix = lerp(fp.position.x, tp.position.x, animProgress);
-        const iz = lerp(fp.position.z, tp.position.z, animProgress);
-        updatePlayerPos({{ id: fp.id, position: {{ x: ix, z: iz }} }});
-      }}
+      if (!tp) return;
+      const pObj = playerEls.find(p => p.data.id === fp.id);
+      if (!pObj) return;
+
+      const ix = lerp(fp.position.x, tp.position.x, t);
+      const iz = lerp(fp.position.z, tp.position.z, t);
+
+      pObj.data.position.x = ix;
+      pObj.data.position.z = iz;
+      const [px, py] = gameToPixel(ix, iz);
+      pObj._px = px - P_SIZE/2;
+      pObj._py = py - P_SIZE/2;
+      setPos(pObj.el, pObj._px, pObj._py);
     }});
 
     // Interpolate ball
     const fb = from.ball_position;
     const tb = to.ball_position;
-    ballData.x = lerp(fb.x, tb.x, animProgress);
-    ballData.z = lerp(fb.z, tb.z, animProgress);
-    updateBallPos();
+    const bx = lerp(fb.x, tb.x, t);
+    const bz = lerp(fb.z, tb.z, t);
+    ballData.x = bx;
+    ballData.z = bz;
+    updateBallTransform(bx, bz);
 
-    // Ball trajectory (parabolic = ball rises visually)
+    // Ball height (parabolic trajectory)
     const trajectory = to.ball_trajectory || "linear";
     const peakHeight = to.ball_peak_height || 0;
     let ballH = 0;
 
     if (trajectory === "parabolic" && peakHeight > 0) {{
-      const t = animProgress;
-      ballH = 2*(1-t)*t * peakHeight;
+      ballH = 4 * peakHeight * animProgress * (1 - animProgress);
+    }} else {{
+      ballH = lerp(fb.y || 0, tb.y || 0, t);
     }}
 
-    // Visual ball height: scale sphere size and offset
+    // Visualize height: lift ball sphere, shrink shadow
     const hPx = ballH * SCALE * 0.5;
-    ballSphere.style.height = (B_SIZE * 1.4 + hPx) + 'px';
-    ballSphere.style.bottom = '0px';
-    ballShadow.style.opacity = (1 - ballH * 0.1).toFixed(2);
+    if (hPx > 1) {{
+      ballSphere.style.transform = 'rotateX(-90deg) translateY(-' + hPx + 'px)';
+      ballShadow.style.opacity = Math.max(0.1, 1 - ballH * 0.15).toFixed(2);
+      ballShadow.style.transform = 'scale(' + Math.max(0.3, 1 - ballH * 0.08).toFixed(2) + ')';
+    }} else {{
+      ballSphere.style.transform = 'rotateX(-90deg)';
+      ballShadow.style.opacity = '1';
+      ballShadow.style.transform = 'scale(1)';
+    }}
 
     requestAnimationFrame(animLoop);
   }}
