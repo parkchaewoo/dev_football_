@@ -59,10 +59,12 @@ def render_tactical_board_page():
 
     with frame_col3:
         frame_options = [f"프레임 {i+1}" for i in range(len(current_phase.frames))]
+        # Initialize selectbox value if not set
+        if "tb_frame_sel" not in st.session_state:
+            st.session_state["tb_frame_sel"] = frame_idx
         sel_frame = st.selectbox(
             "프레임", range(len(frame_options)),
             format_func=lambda i: frame_options[i],
-            index=frame_idx,
             label_visibility="collapsed",
             key="tb_frame_sel",
         )

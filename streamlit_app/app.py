@@ -370,16 +370,20 @@ with st.sidebar:
 # ===== MAIN CONTENT - TAB NAVIGATION =====
 st.session_state.firebase_ok = firebase_ok
 
-tab1, tab2, tab3 = st.tabs(["⚽ 전술 보드", "🏥 부상/병원", "📋 게시판"])
+tab1, tab2, tab3, tab4 = st.tabs(["⚽ 전술 보드", "🌐 전술 갤러리", "🏥 부상/병원", "📋 게시판"])
 
 with tab1:
     from pages.tactical_board import render_tactical_board_page
     render_tactical_board_page()
 
 with tab2:
+    from pages.strategy_gallery import render_strategy_gallery_page
+    render_strategy_gallery_page()
+
+with tab3:
     from pages.injury_hospital import render_injury_hospital_page
     render_injury_hospital_page()
 
-with tab3:
+with tab4:
     from pages.team_board import render_team_board_page
     render_team_board_page()
