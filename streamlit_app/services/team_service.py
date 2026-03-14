@@ -1,8 +1,13 @@
 from services.firebase_init import get_firestore_client
-from google.cloud.firestore_v1 import ArrayUnion, ArrayRemove
 import time
 import random
 import string
+
+try:
+    from google.cloud.firestore_v1 import ArrayUnion, ArrayRemove
+except ImportError:
+    ArrayUnion = None
+    ArrayRemove = None
 
 
 def _generate_invite_code() -> str:

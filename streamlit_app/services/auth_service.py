@@ -1,7 +1,11 @@
 from services.firebase_init import get_firestore_client
-from google.cloud.firestore_v1 import ArrayUnion
 import time
 import hashlib
+
+try:
+    from google.cloud.firestore_v1 import ArrayUnion
+except ImportError:
+    ArrayUnion = None
 
 
 def _nickname_to_uid(nickname: str) -> str:

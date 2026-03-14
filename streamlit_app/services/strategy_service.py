@@ -1,8 +1,10 @@
 from services.firebase_init import get_firestore_client
-from google.cloud.firestore_v1 import Increment
-from dataclasses import asdict
 import time
-import json
+
+try:
+    from google.cloud.firestore_v1 import Increment
+except ImportError:
+    Increment = None
 
 
 def save_strategy_to_firestore(

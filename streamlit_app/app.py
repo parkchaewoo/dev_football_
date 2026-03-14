@@ -9,16 +9,9 @@ from utils.models import (
 )
 from components.tactical_board import generate_board_html
 from services.firebase_init import is_firebase_configured
-from services.auth_service import create_or_get_user
-from services.team_service import create_team, join_team_by_code, get_my_teams, leave_team
-from services.strategy_service import (
-    save_strategy_to_firestore, get_team_strategies,
-    get_public_strategies, delete_strategy,
-)
-from services.social_service import (
-    add_comment, get_comments, delete_comment,
-    toggle_like, has_liked,
-)
+
+# Firebase 서비스는 지연 import (firebase-admin 미설치 시에도 앱 동작)
+firebase_ok = is_firebase_configured()
 
 st.set_page_config(
     page_title="풋살 전술 보드",
@@ -45,8 +38,6 @@ if "current_team" not in st.session_state:
 if "firestore_strategy_id" not in st.session_state:
     st.session_state.firestore_strategy_id = None
 
-firebase_ok = is_firebase_configured()
-
 # ===== LOGIN SCREEN =====
 if not st.session_state.user:
     st.markdown(
@@ -66,6 +57,7 @@ if not st.session_state.user:
         if st.button("시작하기", use_container_width=True, type="primary"):
             if nick.strip():
                 if firebase_ok:
+                    from services.auth_service import create_or_get_user
                     user = create_or_get_user(nick.strip())
                     st.session_state.user = user
                 else:
@@ -85,6 +77,8 @@ if not st.session_state.user:
 
 # ===== TEAM SELECTION (Firebase only) =====
 if firebase_ok and not st.session_state.current_team:
+    from services.team_service import create_team, join_team_by_code, get_my_teams, leave_team
+
     user = st.session_state.user
 
     st.markdown(f"### 👤 {user['displayName']}님, 환영합니다!")
@@ -223,6 +217,7 @@ with st.sidebar:
 
     # Firestore save
     if firebase_ok and team and team.get("id"):
+        from services.strategy_service import save_strategy_to_firestore
         visibility = st.selectbox(
             "공개 범위",
             ["team", "public", "private"],
@@ -261,6 +256,8 @@ with st.sidebar:
 
     # Load from Firestore
     if firebase_ok:
+        from services.strategy_service import get_team_strategies, get_public_strategies
+
         st.divider()
         load_tab1, load_tab2 = st.tabs(["팀 전술", "공개 전술"])
         with load_tab1:
@@ -362,13 +359,14 @@ with st.sidebar:
             with st.chat_message("user" if is_own else "assistant"):
                 st.markdown(f"**{msg['author']}**: {msg['text']}")
 
-    chat_input = st.chat_input("메시지를 입력하세요...")
-    if chat_input:
-        st.session_state.chat_messages.append({
-            "author": st.session_state.nickname,
-            "text": chat_input,
-        })
-        st.rerun()
+    chat_text = st.text_input("메시지 입력", key="sidebar_chat_input", placeholder="메시지를 입력하세요...", label_visibility="collapsed")
+    if st.button("전송", key="send_chat", use_container_width=True):
+        if chat_text.strip():
+            st.session_state.chat_messages.append({
+                "author": st.session_state.nickname,
+                "text": chat_text.strip(),
+            })
+            st.rerun()
 
 
 # ===== MAIN CONTENT =====
@@ -409,7 +407,7 @@ with frame_col3:
 
 with frame_col4:
     can_play = len(current_phase.frames) >= 2
-    play_label = "▶ 재생" if can_play else "▶ (2프레임 이상 필요)"
+    play_label = "▶ 재생" if can_play else "▶ (2프레임 이상)"
     is_playing = st.button(play_label, disabled=not can_play)
 
 with frame_col5:
@@ -450,6 +448,9 @@ st.caption(
 
 # ===== SOCIAL SECTION (댓글/좋아요) =====
 if firebase_ok and st.session_state.firestore_strategy_id:
+    from services.social_service import add_comment, get_comments, delete_comment, toggle_like, has_liked
+    import datetime
+
     strat_id = st.session_state.firestore_strategy_id
     st.divider()
 
@@ -469,11 +470,11 @@ if firebase_ok and st.session_state.firestore_strategy_id:
     for c in comments:
         col_cmt, col_del = st.columns([9, 1])
         with col_cmt:
+            ts = c.get("createdAt", 0)
+            date_str = datetime.datetime.fromtimestamp(ts / 1000).strftime("%m/%d") if ts else ""
             st.markdown(
                 f"**{c.get('authorName', '?')}**: {c.get('text', '')} "
-                f"<span style='color:#666;font-size:12px;'>"
-                f"{__import__('datetime').datetime.fromtimestamp(c.get('createdAt', 0) / 1000).strftime('%m/%d')}"
-                f"</span>",
+                f"<span style='color:#666;font-size:12px;'>{date_str}</span>",
                 unsafe_allow_html=True,
             )
         with col_del:
