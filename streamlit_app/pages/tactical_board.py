@@ -96,7 +96,7 @@ def render_tactical_board_page():
     if len(current_phase.frames) >= 2:
         traj_col1, traj_col2, traj_col3 = st.columns([3, 3, 6])
         with traj_col1:
-            trajectory_options = ["일반 (직선)", "포물선"]
+            trajectory_options = ["일반 (직선)", "롭볼"]
             current_traj = getattr(current_frame, 'ball_trajectory', 'linear')
             traj_idx = 0 if current_traj == "linear" else 1
             traj_sel = st.selectbox(
@@ -105,7 +105,7 @@ def render_tactical_board_page():
                 index=traj_idx,
                 key=fk + "ball_traj",
             )
-            new_traj = "linear" if traj_sel == "일반 (직선)" else "parabolic"
+            new_traj = "linear" if traj_sel == "일반 (직선)" else "parabolic"  # 롭볼 = parabolic
             if new_traj != current_traj:
                 current_frame.ball_trajectory = new_traj
                 st.rerun()
@@ -127,7 +127,7 @@ def render_tactical_board_page():
 
         with traj_col3:
             st.caption(
-                "💡 **일반**: 공이 직선으로 이동 | **포물선**: 공이 올라갔다 내려옴"
+                "💡 **일반**: 공이 직선으로 이동 | **롭볼**: 공이 올라갔다 내려옴"
             )
 
     # Prepare frames data for animation (minimal data to reduce memory)

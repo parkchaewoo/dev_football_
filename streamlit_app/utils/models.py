@@ -30,8 +30,8 @@ class Frame:
     id: str = ""
     players: List[Player] = field(default_factory=list)
     ball_position: Position3D = field(default_factory=lambda: Position3D(0, 0, 0))
-    ball_peak_height: float = 0.0  # 프레임 간 공 최고 높이 (포물선 궤적)
-    ball_trajectory: str = "linear"  # "linear" (직선) or "parabolic" (포물선)
+    ball_peak_height: float = 0.0  # 프레임 간 공 최고 높이 (롭볼 궤적)
+    ball_trajectory: str = "linear"  # "linear" (직선) or "parabolic" (롭볼)
 
 
 @dataclass
