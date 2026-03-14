@@ -1,13 +1,8 @@
 import json
-import os
 from dataclasses import asdict
 from typing import List, Optional
 import streamlit.components.v1 as st_components
 from utils.models import Player, Position3D
-
-
-_COMPONENT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tactical_board_component")
-_tactical_board_component = st_components.declare_component("tactical_board", path=_COMPONENT_DIR)
 
 
 def render_tactical_board(
@@ -18,23 +13,17 @@ def render_tactical_board(
     height: int = 600,
     key: str = "tactical_board",
 ) -> Optional[dict]:
-    """양방향 Streamlit 컴포넌트로 3D 전술 보드를 렌더링합니다.
-
-    드래그 결과를 반환합니다 (dict with 'players' and 'ball' keys).
-    """
-    players_list = [asdict(p) for p in players]
-    ball_dict = asdict(ball_position)
-
-    result = _tactical_board_component(
-        players=players_list,
-        ball=ball_dict,
-        frames=frames_data or [],
+    """st.components.v1.html()로 3D 전술 보드를 렌더링합니다."""
+    frames_json = json.dumps(frames_data) if frames_data else "[]"
+    board_html = generate_board_html(
+        players=players,
+        ball_position=ball_position,
+        ball_height=0.22,
+        frames_data=frames_json,
         is_playing=is_playing,
-        height=height,
-        key=key,
-        default=None,
     )
-    return result
+    st_components.html(board_html, height=height, scrolling=False)
+    return None
 
 
 def generate_board_html(
