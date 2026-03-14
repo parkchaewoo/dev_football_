@@ -80,7 +80,14 @@ try {{
   camera.position.set(25, 25, 25);
   camera.lookAt(0, 0, 0);
 
-  const renderer = new THREE.WebGLRenderer({{ antialias: true }});
+  // Explicitly create canvas and get WebGL context with relaxed settings
+  const glCanvas = document.createElement('canvas');
+  const glCtx = glCanvas.getContext('webgl2', {{ failIfMajorPerformanceCaveat: false, powerPreference: 'default' }})
+              || glCanvas.getContext('webgl', {{ failIfMajorPerformanceCaveat: false, powerPreference: 'default' }})
+              || glCanvas.getContext('experimental-webgl', {{ failIfMajorPerformanceCaveat: false }});
+  if (!glCtx) throw new Error('WebGL not supported. Browser: ' + navigator.userAgent);
+
+  const renderer = new THREE.WebGLRenderer({{ canvas: glCanvas, context: glCtx, antialias: true }});
   renderer.setSize(w, h);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
@@ -551,7 +558,14 @@ try {{
   const errDiv = document.getElementById('error');
   if (errDiv) {{
     errDiv.style.display = 'block';
-    errDiv.textContent = 'Three.js 로딩 실패: ' + err.message;
+    // Show detailed debug info
+    const testCanvas = document.createElement('canvas');
+    const gl1 = !!testCanvas.getContext('webgl');
+    const gl2 = !!testCanvas.getContext('webgl2');
+    errDiv.innerHTML = '<b>3D 로딩 실패</b><br>'
+      + err.message + '<br><br>'
+      + '<small>WebGL1: ' + gl1 + ' | WebGL2: ' + gl2 + '<br>'
+      + 'UA: ' + navigator.userAgent.substring(0, 80) + '</small>';
   }}
   console.error('Three.js error:', err);
 }}
