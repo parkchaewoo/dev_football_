@@ -446,6 +446,85 @@ st.caption(
     f"⚽ 공 높이: {'지면' if ball_h <= 0.3 else f'{ball_h:.1f}m'}"
 )
 
+# ===== POSITION EDITOR (iframe은 단방향이므로 위치 편집은 여기서) =====
+with st.expander("📍 선수/공 위치 편집 (프레임에 기록됨)", expanded=False):
+    st.caption("3D 보드의 드래그는 미리보기 전용입니다. 아래에서 위치를 수정하면 프레임에 저장됩니다.")
+
+    # Ball position
+    st.markdown("**⚽ 공 위치**")
+    ball_cols = st.columns(3)
+    with ball_cols[0]:
+        new_ball_x = st.number_input(
+            "공 X (좌우)", min_value=-20.0, max_value=20.0,
+            value=float(current_frame.ball_position.x), step=0.5,
+            key="ball_x_input", format="%.1f",
+        )
+    with ball_cols[1]:
+        new_ball_z = st.number_input(
+            "공 Z (상하)", min_value=-10.0, max_value=10.0,
+            value=float(current_frame.ball_position.z), step=0.5,
+            key="ball_z_input", format="%.1f",
+        )
+    with ball_cols[2]:
+        new_ball_y = st.number_input(
+            "공 높이 (Y)", min_value=0.0, max_value=8.0,
+            value=float(current_frame.ball_position.y), step=0.1,
+            key="ball_y_input", format="%.1f",
+        )
+    if (abs(new_ball_x - current_frame.ball_position.x) > 0.01 or
+            abs(new_ball_z - current_frame.ball_position.z) > 0.01 or
+            abs(new_ball_y - current_frame.ball_position.y) > 0.01):
+        current_frame.ball_position.x = new_ball_x
+        current_frame.ball_position.z = new_ball_z
+        current_frame.ball_position.y = new_ball_y
+
+    st.divider()
+
+    # Player positions
+    home_players = [p for p in current_frame.players if p.team == "home"]
+    away_players = [p for p in current_frame.players if p.team == "away"]
+
+    team_col1, team_col2 = st.columns(2)
+    with team_col1:
+        st.markdown("**🔴 홈 팀**")
+        for p in home_players:
+            pc1, pc2 = st.columns(2)
+            with pc1:
+                nx = st.number_input(
+                    f"#{p.number} X", min_value=-20.0, max_value=20.0,
+                    value=float(p.position.x), step=0.5,
+                    key=f"p_{p.id}_x", format="%.1f",
+                )
+            with pc2:
+                nz = st.number_input(
+                    f"#{p.number} Z", min_value=-10.0, max_value=10.0,
+                    value=float(p.position.z), step=0.5,
+                    key=f"p_{p.id}_z", format="%.1f",
+                )
+            if abs(nx - p.position.x) > 0.01 or abs(nz - p.position.z) > 0.01:
+                p.position.x = nx
+                p.position.z = nz
+
+    with team_col2:
+        st.markdown("**🔵 어웨이 팀**")
+        for p in away_players:
+            pc1, pc2 = st.columns(2)
+            with pc1:
+                nx = st.number_input(
+                    f"#{p.number} X", min_value=-20.0, max_value=20.0,
+                    value=float(p.position.x), step=0.5,
+                    key=f"p_{p.id}_x", format="%.1f",
+                )
+            with pc2:
+                nz = st.number_input(
+                    f"#{p.number} Z", min_value=-10.0, max_value=10.0,
+                    value=float(p.position.z), step=0.5,
+                    key=f"p_{p.id}_z", format="%.1f",
+                )
+            if abs(nx - p.position.x) > 0.01 or abs(nz - p.position.z) > 0.01:
+                p.position.x = nx
+                p.position.z = nz
+
 # ===== SOCIAL SECTION (댓글/좋아요) =====
 if firebase_ok and st.session_state.firestore_strategy_id:
     from services.social_service import add_comment, get_comments, delete_comment, toggle_like, has_liked
