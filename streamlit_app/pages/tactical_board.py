@@ -1,12 +1,13 @@
 """전술 보드 페이지 - 3D 전술 보드, 프레임/단계 관리, 소셜 기능."""
 import streamlit as st
+import streamlit.components.v1 as st_components
 import json
 import copy
 from dataclasses import asdict
 from utils.models import (
     generate_id, Position3D, Frame, Phase,
 )
-from components.tactical_board import render_tactical_board
+from components.tactical_board import generate_board_html
 
 
 def render_tactical_board_page():
@@ -37,6 +38,7 @@ def render_tactical_board_page():
                 players=copy.deepcopy(last_frame.players),
                 ball_position=copy.deepcopy(last_frame.ball_position),
                 ball_peak_height=0.0,
+                ball_trajectory="linear",
             )
             current_phase.frames.append(new_frame)
             st.session_state.current_frame_idx = len(current_phase.frames) - 1
@@ -64,7 +66,7 @@ def render_tactical_board_page():
 
     with frame_col4:
         can_play = len(current_phase.frames) >= 2
-        play_label = "재생" if can_play else "(2프레임 이상)"
+        play_label = "▶ 전체 재생" if can_play else "(2프레임 이상)"
         is_playing = st.button(play_label, disabled=not can_play, key="tb_play")
 
     with frame_col5:
@@ -77,22 +79,42 @@ def render_tactical_board_page():
         if abs(ball_h - current_frame.ball_position.y) > 0.01:
             current_frame.ball_position.y = ball_h
 
-    # Ball peak height control (parabolic arc between frames)
+    # Ball trajectory and peak height controls (when 2+ frames)
     if len(current_phase.frames) >= 2:
-        peak_col1, peak_col2 = st.columns([3, 9])
-        with peak_col1:
-            st.markdown("**공 궤적 최고 높이**")
-        with peak_col2:
-            peak_h = st.slider(
-                "공 최고 높이 (포물선)",
-                min_value=0.0, max_value=10.0,
-                value=float(getattr(current_frame, 'ball_peak_height', 0.0)),
-                step=0.5, format="%.1fm",
-                help="프레임 간 이동 시 공이 올라갔다 내려오는 최고 높이 (로브패스, 슈팅 등)",
-                key="tb_ball_peak",
+        traj_col1, traj_col2, traj_col3 = st.columns([3, 3, 6])
+        with traj_col1:
+            trajectory_options = ["일반 (직선)", "포물선"]
+            current_traj = getattr(current_frame, 'ball_trajectory', 'linear')
+            traj_idx = 0 if current_traj == "linear" else 1
+            traj_sel = st.selectbox(
+                "공 궤적 타입",
+                trajectory_options,
+                index=traj_idx,
+                key="tb_ball_traj",
             )
-            if abs(peak_h - current_frame.ball_peak_height) > 0.01:
-                current_frame.ball_peak_height = peak_h
+            new_traj = "linear" if traj_sel == "일반 (직선)" else "parabolic"
+            if new_traj != current_traj:
+                current_frame.ball_trajectory = new_traj
+
+        with traj_col2:
+            if getattr(current_frame, 'ball_trajectory', 'linear') == "parabolic":
+                peak_h = st.slider(
+                    "최고 높이",
+                    min_value=0.5, max_value=10.0,
+                    value=max(0.5, float(getattr(current_frame, 'ball_peak_height', 2.0))),
+                    step=0.5, format="%.1fm",
+                    help="포물선 궤적의 최고 높이 (로브패스, 슈팅 등)",
+                    key="tb_ball_peak",
+                )
+                if abs(peak_h - current_frame.ball_peak_height) > 0.01:
+                    current_frame.ball_peak_height = peak_h
+            else:
+                current_frame.ball_peak_height = 0.0
+
+        with traj_col3:
+            st.caption(
+                "💡 **일반**: 공이 직선으로 이동 | **포물선**: 공이 올라갔다 내려옴"
+            )
 
     # Prepare frames data for animation
     frames_for_js = []
@@ -100,36 +122,14 @@ def render_tactical_board_page():
         for f in current_phase.frames:
             frames_for_js.append(asdict(f))
 
-    # 3D Board (bidirectional component - drag positions are saved!)
-    drag_result = render_tactical_board(
+    # 3D Board (one-way: Python → JS via st.components.v1.html)
+    board_html = generate_board_html(
         players=current_frame.players,
         ball_position=current_frame.ball_position,
         frames_data=json.dumps(frames_for_js),
         is_playing=is_playing,
-        height=600,
-        key="tactical_board",
     )
-
-    # Apply dragged positions from 3D board back to session state
-    if drag_result and isinstance(drag_result, dict):
-        changed = False
-        if "players" in drag_result:
-            for pd in drag_result["players"]:
-                for p in current_frame.players:
-                    if p.id == pd["id"]:
-                        if abs(p.position.x - pd["x"]) > 0.01 or abs(p.position.z - pd["z"]) > 0.01:
-                            p.position.x = pd["x"]
-                            p.position.z = pd["z"]
-                            changed = True
-        if "ball" in drag_result:
-            bd = drag_result["ball"]
-            if (abs(current_frame.ball_position.x - bd["x"]) > 0.01 or
-                    abs(current_frame.ball_position.z - bd["z"]) > 0.01):
-                current_frame.ball_position.x = bd["x"]
-                current_frame.ball_position.z = bd["z"]
-                changed = True
-        if changed:
-            st.rerun()
+    st_components.html(board_html, height=600, scrolling=False)
 
     # Info
     st.caption(
@@ -140,8 +140,8 @@ def render_tactical_board_page():
     )
 
     # ===== POSITION EDITOR =====
-    with st.expander("📍 선수/공 위치 정밀 편집", expanded=False):
-        st.caption("3D 보드에서 드래그하면 자동 저장됩니다. 아래에서 정밀 좌표를 수정할 수도 있습니다.")
+    with st.expander("📍 선수/공 위치 정밀 편집 (드래그 대신 좌표 입력)", expanded=True):
+        st.caption("아래에서 정밀 좌표를 수정하면 3D 보드에 즉시 반영됩니다.")
 
         st.markdown("**⚽ 공 위치**")
         ball_cols = st.columns(3)

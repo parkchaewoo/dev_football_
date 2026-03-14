@@ -1,40 +1,7 @@
-import os
 import json
 from dataclasses import asdict
-from typing import List, Optional
-import streamlit.components.v1 as st_components
+from typing import List
 from utils.models import Player, Position3D
-
-# Bidirectional component (declare_component)
-_COMPONENT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tactical_board_component")
-_tactical_board_component = st_components.declare_component("tactical_board", path=_COMPONENT_DIR)
-
-
-def render_tactical_board(
-    players: List[Player],
-    ball_position: Position3D,
-    frames_data: str = "[]",
-    is_playing: bool = False,
-    height: int = 600,
-    key: str = "tactical_board",
-) -> Optional[dict]:
-    """Render the 3D tactical board as a bidirectional Streamlit component.
-
-    Returns dict with updated positions when user drags players/ball, or None.
-    """
-    players_json = json.dumps([asdict(p) for p in players])
-    ball_json = json.dumps(asdict(ball_position))
-
-    result = _tactical_board_component(
-        players=players_json,
-        ball=ball_json,
-        frames=frames_data,
-        is_playing=is_playing,
-        height=height,
-        key=key,
-        default=None,
-    )
-    return result
 
 
 def generate_board_html(
@@ -540,10 +507,23 @@ try {{
     const tb = to.ball_position;
     ballGroup.position.x = lerp(fb.x, tb.x, animProgress);
     ballGroup.position.z = lerp(fb.z, tb.z, animProgress);
-    const baseY = lerp(fb.y, tb.y, animProgress);
-    const maxH = Math.max(fb.y, tb.y);
-    const arc = maxH > 0.5 ? Math.sin(animProgress * Math.PI) * maxH * 0.3 : 0;
-    ballGroup.position.y = baseY + arc;
+
+    // Trajectory type: "linear" or "parabolic"
+    const trajectory = to.ball_trajectory || "linear";
+    const peakHeight = to.ball_peak_height || 0;
+
+    if (trajectory === "parabolic" && peakHeight > 0) {{
+      // Quadratic bezier: start Y → peak → end Y
+      const t = animProgress;
+      const startY = fb.y;
+      const endY = tb.y;
+      const controlY = peakHeight;
+      // B(t) = (1-t)^2 * P0 + 2(1-t)t * P1 + t^2 * P2
+      ballGroup.position.y = (1-t)*(1-t)*startY + 2*(1-t)*t*controlY + t*t*endY;
+    }} else {{
+      // Linear interpolation
+      ballGroup.position.y = lerp(fb.y, tb.y, animProgress);
+    }}
     updateBallVisuals();
   }}
 
