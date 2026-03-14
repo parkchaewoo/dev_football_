@@ -92,25 +92,27 @@ def render_tactical_board_page():
             trajectory_options = ["일반 (직선)", "포물선"]
             current_traj = getattr(current_frame, 'ball_trajectory', 'linear')
             traj_idx = 0 if current_traj == "linear" else 1
+            # Frame-specific key to avoid Streamlit widget state caching across frames
             traj_sel = st.selectbox(
                 "공 궤적 타입",
                 trajectory_options,
                 index=traj_idx,
-                key="tb_ball_traj",
+                key=f"tb_ball_traj_{frame_idx}",
             )
             new_traj = "linear" if traj_sel == "일반 (직선)" else "parabolic"
             if new_traj != current_traj:
                 current_frame.ball_trajectory = new_traj
+                st.rerun()
 
         with traj_col2:
             if getattr(current_frame, 'ball_trajectory', 'linear') == "parabolic":
                 peak_h = st.slider(
-                    "최고 높이",
-                    min_value=0.5, max_value=10.0,
-                    value=max(0.5, float(getattr(current_frame, 'ball_peak_height', 2.0))),
+                    "최고 높이 (실제 미터)",
+                    min_value=0.5, max_value=8.0,
+                    value=max(0.5, float(getattr(current_frame, 'ball_peak_height', 3.0))),
                     step=0.5, format="%.1fm",
-                    help="포물선 궤적의 최고 높이 (로브패스, 슈팅 등)",
-                    key="tb_ball_peak",
+                    help="로브패스 2~4m, 슈팅 1~2m, 프리킥 5~7m",
+                    key=f"tb_ball_peak_{frame_idx}",
                 )
                 if abs(peak_h - current_frame.ball_peak_height) > 0.01:
                     current_frame.ball_peak_height = peak_h
