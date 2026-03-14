@@ -19,22 +19,45 @@ def generate_board_html(
 <html>
 <head>
 <style>
-  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-  body {{ background: #1a1a2e; overflow: hidden; }}
-  canvas {{ display: block; }}
+  html, body {{
+    margin: 0; padding: 0;
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #1a1a2e;
+  }}
+  canvas {{ display: block; width: 100%; height: 100%; }}
   #info {{
     position: absolute; top: 8px; left: 8px;
     color: #888; font: 12px sans-serif;
-    pointer-events: none;
+    pointer-events: none; z-index: 10;
+  }}
+  #error {{
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    color: #ff6b6b; font: 16px sans-serif;
+    text-align: center; display: none; z-index: 20;
   }}
 </style>
 </head>
 <body>
 <div id="info">마우스 드래그: 선수/공 이동 | 우클릭 드래그: 카메라 회전 | 스크롤: 줌</div>
-<script src="https://cdn.jsdelivr.net/npm/three@0.152.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.152.0/examples/js/controls/OrbitControls.js"></script>
-<script>
-(function() {{
+<div id="error"></div>
+
+<script type="importmap">
+{{
+  "imports": {{
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }}
+}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import {{ OrbitControls }} from 'three/addons/controls/OrbitControls.js';
+
+try {{
+
   // ===== CONFIG =====
   const COURT_LENGTH = 40, COURT_WIDTH = 20;
   const HL = COURT_LENGTH / 2, HW = COURT_WIDTH / 2;
@@ -50,19 +73,20 @@ def generate_board_html(
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x1a1a2e);
 
-  const w = document.body.clientWidth || window.innerWidth || 800;
-  const h = document.body.clientHeight || window.innerHeight || 600;
+  const w = window.innerWidth || 800;
+  const h = window.innerHeight || 600;
 
   const camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 200);
   camera.position.set(25, 25, 25);
+  camera.lookAt(0, 0, 0);
 
   const renderer = new THREE.WebGLRenderer({{ antialias: true }});
   renderer.setSize(w, h);
-  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.maxPolarAngle = Math.PI / 2.1;
   controls.minDistance = 5;
@@ -174,7 +198,7 @@ def generate_board_html(
     head.position.y = 1.65;
     group.add(head);
 
-    // Body (jersey)
+    // Body (jersey) - CapsuleGeometry
     const body = new THREE.Mesh(
       new THREE.CapsuleGeometry(0.2, 0.5, 8, 16),
       new THREE.MeshStandardMaterial({{ color: colors.jersey }})
@@ -339,7 +363,6 @@ def generate_board_html(
   let selected = null;
 
   function selectObject(obj) {{
-    // Deselect prev
     if (selected) {{
       if (selected.type === 'player') {{
         const mesh = playerMeshes.find(m => m.userData.id === selected.id);
@@ -366,7 +389,7 @@ def generate_board_html(
   }}
 
   renderer.domElement.addEventListener('pointerdown', (e) => {{
-    if (e.button !== 0) return; // left click only
+    if (e.button !== 0) return;
     getMousePos(e);
     raycaster.setFromCamera(mouse, camera);
 
@@ -412,20 +435,6 @@ def generate_board_html(
 
   renderer.domElement.addEventListener('pointerup', () => {{
     if (dragging) {{
-      // Send updated positions to Streamlit
-      const positions = {{}};
-      playerMeshes.forEach(m => {{
-        positions[m.userData.id] = {{
-          x: Math.round(m.position.x * 100) / 100,
-          z: Math.round(m.position.z * 100) / 100
-        }};
-      }});
-      positions.ball = {{
-        x: Math.round(ballGroup.position.x * 100) / 100,
-        y: Math.round(ballGroup.position.y * 100) / 100,
-        z: Math.round(ballGroup.position.z * 100) / 100
-      }};
-
       dragging = null;
       controls.enabled = true;
     }}
@@ -518,13 +527,21 @@ def generate_board_html(
 
   // Resize
   window.addEventListener('resize', () => {{
-    const rw = document.body.clientWidth || window.innerWidth;
-    const rh = document.body.clientHeight || window.innerHeight;
+    const rw = window.innerWidth;
+    const rh = window.innerHeight;
     camera.aspect = rw / rh;
     camera.updateProjectionMatrix();
     renderer.setSize(rw, rh);
   }});
-}})();
+
+}} catch (err) {{
+  const errDiv = document.getElementById('error');
+  if (errDiv) {{
+    errDiv.style.display = 'block';
+    errDiv.textContent = 'Three.js 로딩 실패: ' + err.message;
+  }}
+  console.error('Three.js error:', err);
+}}
 </script>
 </body>
 </html>
