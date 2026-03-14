@@ -1,7 +1,40 @@
+import os
 import json
 from dataclasses import asdict
-from typing import List
+from typing import List, Optional
+import streamlit.components.v1 as st_components
 from utils.models import Player, Position3D
+
+# Bidirectional component (declare_component)
+_COMPONENT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tactical_board_component")
+_tactical_board_component = st_components.declare_component("tactical_board", path=_COMPONENT_DIR)
+
+
+def render_tactical_board(
+    players: List[Player],
+    ball_position: Position3D,
+    frames_data: str = "[]",
+    is_playing: bool = False,
+    height: int = 600,
+    key: str = "tactical_board",
+) -> Optional[dict]:
+    """Render the 3D tactical board as a bidirectional Streamlit component.
+
+    Returns dict with updated positions when user drags players/ball, or None.
+    """
+    players_json = json.dumps([asdict(p) for p in players])
+    ball_json = json.dumps(asdict(ball_position))
+
+    result = _tactical_board_component(
+        players=players_json,
+        ball=ball_json,
+        frames=frames_data,
+        is_playing=is_playing,
+        height=height,
+        key=key,
+        default=None,
+    )
+    return result
 
 
 def generate_board_html(

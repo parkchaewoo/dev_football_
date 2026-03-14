@@ -7,7 +7,7 @@ from utils.models import (
     strategy_to_json, strategy_from_json, strategy_from_firestore,
     generate_id, Position3D, Player, Frame, Phase
 )
-from components.tactical_board import generate_board_html
+from components.tactical_board import generate_board_html, render_tactical_board
 from services.firebase_init import is_firebase_configured
 
 # Firebase 서비스는 지연 import (firebase-admin 미설치 시에도 앱 동작)
@@ -421,6 +421,23 @@ with frame_col5:
     if abs(ball_h - current_frame.ball_position.y) > 0.01:
         current_frame.ball_position.y = ball_h
 
+# Ball peak height control (parabolic arc between frames)
+if len(current_phase.frames) >= 2:
+    peak_col1, peak_col2 = st.columns([3, 9])
+    with peak_col1:
+        st.markdown("**공 궤적 최고 높이**")
+    with peak_col2:
+        peak_h = st.slider(
+            "공 최고 높이 (포물선)",
+            min_value=0.0, max_value=10.0,
+            value=float(getattr(current_frame, 'ball_peak_height', 0.0)),
+            step=0.5,
+            format="%.1fm",
+            help="프레임 간 이동 시 공이 올라갔다 내려오는 최고 높이 (로브패스, 슈팅 등)",
+            key="ball_peak_height_slider",
+        )
+        if abs(peak_h - current_frame.ball_peak_height) > 0.01:
+            current_frame.ball_peak_height = peak_h
 
 # Prepare frames data for animation
 frames_for_js = []
@@ -428,15 +445,36 @@ if is_playing:
     for f in current_phase.frames:
         frames_for_js.append(asdict(f))
 
-# 3D Board
-board_html = generate_board_html(
+# 3D Board (bidirectional component - drag positions are saved!)
+drag_result = render_tactical_board(
     players=current_frame.players,
     ball_position=current_frame.ball_position,
-    ball_height=ball_h,
     frames_data=json.dumps(frames_for_js),
     is_playing=is_playing,
+    height=600,
+    key="tactical_board",
 )
-st.components.v1.html(board_html, height=600)
+
+# Apply dragged positions from 3D board back to session state
+if drag_result and isinstance(drag_result, dict):
+    changed = False
+    # Update player positions
+    if "players" in drag_result:
+        for pd in drag_result["players"]:
+            for p in current_frame.players:
+                if p.id == pd["id"]:
+                    if abs(p.position.x - pd["x"]) > 0.01 or abs(p.position.z - pd["z"]) > 0.01:
+                        p.position.x = pd["x"]
+                        p.position.z = pd["z"]
+                        changed = True
+    # Update ball position
+    if "ball" in drag_result:
+        bd = drag_result["ball"]
+        if (abs(current_frame.ball_position.x - bd["x"]) > 0.01 or
+                abs(current_frame.ball_position.z - bd["z"]) > 0.01):
+            current_frame.ball_position.x = bd["x"]
+            current_frame.ball_position.z = bd["z"]
+            changed = True
 
 # Info
 st.caption(
@@ -446,9 +484,9 @@ st.caption(
     f"⚽ 공 높이: {'지면' if ball_h <= 0.3 else f'{ball_h:.1f}m'}"
 )
 
-# ===== POSITION EDITOR (iframe은 단방향이므로 위치 편집은 여기서) =====
-with st.expander("📍 선수/공 위치 편집 (프레임에 기록됨)", expanded=False):
-    st.caption("3D 보드의 드래그는 미리보기 전용입니다. 아래에서 위치를 수정하면 프레임에 저장됩니다.")
+# ===== POSITION EDITOR (정밀 좌표 편집) =====
+with st.expander("📍 선수/공 위치 정밀 편집", expanded=False):
+    st.caption("3D 보드에서 드래그하면 자동 저장됩니다. 아래에서 정밀 좌표를 수정할 수도 있습니다.")
 
     # Ball position
     st.markdown("**⚽ 공 위치**")

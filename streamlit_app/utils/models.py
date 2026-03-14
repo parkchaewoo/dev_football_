@@ -30,6 +30,7 @@ class Frame:
     id: str = ""
     players: List[Player] = field(default_factory=list)
     ball_position: Position3D = field(default_factory=lambda: Position3D(0, 0.22, 0))
+    ball_peak_height: float = 0.0  # 프레임 간 공 최고 높이 (포물선 궤적)
 
 
 @dataclass
@@ -107,7 +108,7 @@ def strategy_from_json(json_str: str) -> Strategy:
                     Position3D(**pl["position"])
                 ) for pl in f.get("players", [])
             ]
-            frames.append(Frame(f["id"], players, Position3D(**f["ball_position"])))
+            frames.append(Frame(f["id"], players, Position3D(**f["ball_position"]), f.get("ball_peak_height", 0.0)))
         phases.append(Phase(p["id"], p["name"], p["description"], frames, p["order"]))
     return Strategy(
         data["id"], data["name"], data["description"],
@@ -135,6 +136,7 @@ def strategy_from_firestore(data: dict) -> Strategy:
                 f.get("id", generate_id()),
                 players,
                 Position3D(bp.get("x", 0), bp.get("y", 0.22), bp.get("z", 0)),
+                f.get("ball_peak_height", f.get("ballPeakHeight", 0.0)),
             ))
         phases.append(Phase(
             p.get("id", generate_id()),

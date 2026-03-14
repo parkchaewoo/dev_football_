@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  html, body {
+    margin: 0; padding: 0;
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #1a1a2e;
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+  #info {
+    position: absolute; top: 8px; left: 8px;
+    color: #888; font: 12px sans-serif;
+    pointer-events: none; z-index: 10;
+  }
+  #error {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    color: #ff6b6b; font: 16px sans-serif;
+    text-align: center; display: none; z-index: 20;
+  }
+  #save-indicator {
+    position: absolute; top: 8px; right: 8px;
+    color: #4ade80; font: 13px sans-serif;
+    opacity: 0; transition: opacity 0.3s;
+    z-index: 10; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="info">좌클릭 드래그: 선수/공 이동 (자동 저장) | 우클릭: 카메라 회전 | 스크롤: 줌</div>
+<div id="error"></div>
+<div id="save-indicator">저장됨!</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ===== STREAMLIT COMPONENT COMMUNICATION =====
+function sendToStreamlit(type, data) {
+  window.parent.postMessage({isStreamlitMessage: true, type: type, ...data}, "*");
+}
+function setComponentValue(value) {
+  sendToStreamlit("streamlit:setComponentValue", {value: value});
+}
+function setFrameHeight(height) {
+  sendToStreamlit("streamlit:setFrameHeight", {height: height});
+}
+
+let sceneInitialized = false;
+let scene, camera, renderer, controls;
+let playerMeshes = [], playerDragTargets = [];
+let ballGroup, ballMesh, ballShadow, ballRing, ballRingMat, ballDragTarget, heightLine;
+let currentPlayersData = [];
+let currentBallData = {x: 0, y: 0.22, z: 0};
+let isPlaying = false;
+let animFrames = [];
+let animPhase = 0;
+let animProgress = 0;
+let runPhases = {};
+let clock;
+let dragging = null;
+let selected = null;
+
+const COURT_LENGTH = 40, COURT_WIDTH = 20;
+const HL = COURT_LENGTH / 2, HW = COURT_WIDTH / 2;
+
+const TEAM_COLORS = {
+  home: { jersey: 0xe53e3e, shorts: 0x1a1a2e, skin: 0xf5d0a9 },
+  away: { jersey: 0x3b82f6, shorts: 0xf0f0f0, skin: 0xf5d0a9 }
+};
+
+function showSaveIndicator() {
+  const el = document.getElementById('save-indicator');
+  if (el) {
+    el.style.opacity = '1';
+    setTimeout(() => { el.style.opacity = '0'; }, 1200);
+  }
+}
+
+function sendPositionsToStreamlit() {
+  const positions = {
+    players: playerMeshes.map(m => ({
+      id: m.userData.id,
+      x: parseFloat(m.position.x.toFixed(2)),
+      z: parseFloat(m.position.z.toFixed(2))
+    })),
+    ball: {
+      x: parseFloat(ballGroup.position.x.toFixed(2)),
+      y: parseFloat(ballGroup.position.y.toFixed(2)),
+      z: parseFloat(ballGroup.position.z.toFixed(2))
+    }
+  };
+  setComponentValue(positions);
+  showSaveIndicator();
+}
+
+function updateBallVisuals() {
+  const p = ballGroup.position;
+  ballShadow.position.set(p.x, 0.02, p.z);
+  ballShadow.scale.setScalar(Math.max(0.1, 1 - p.y / 10));
+  ballRing.position.set(p.x, 0.03, p.z);
+  ballDragTarget.position.set(p.x, Math.max(0.5, p.y), p.z);
+
+  if (p.y > 0.3) {
+    const pts = [new THREE.Vector3(p.x, 0.01, p.z), new THREE.Vector3(p.x, p.y, p.z)];
+    heightLine.geometry.dispose();
+    heightLine.geometry = new THREE.BufferGeometry().setFromPoints(pts);
+    heightLine.visible = true;
+  } else {
+    heightLine.visible = false;
+  }
+}
+
+function createPlayer(data) {
+  const colors = TEAM_COLORS[data.team];
+  const group = new THREE.Group();
+  group.userData = { id: data.id, type: 'player', team: data.team };
+
+  const head = new THREE.Mesh(
+    new THREE.SphereGeometry(0.18, 16, 16),
+    new THREE.MeshStandardMaterial({ color: colors.skin })
+  );
+  head.position.y = 1.65;
+  group.add(head);
+
+  const body = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.2, 0.5, 8, 16),
+    new THREE.MeshStandardMaterial({ color: colors.jersey })
+  );
+  body.position.y = 1.15;
+  group.add(body);
+
+  const armMat = new THREE.MeshStandardMaterial({ color: colors.skin });
+  const armGeo = new THREE.CapsuleGeometry(0.06, 0.3, 4, 8);
+  const lArm = new THREE.Mesh(armGeo, armMat);
+  lArm.position.set(-0.3, 1.15, 0);
+  group.add(lArm);
+  const rArm = new THREE.Mesh(armGeo, armMat);
+  rArm.position.set(0.3, 1.15, 0);
+  group.add(rArm);
+  group.userData.leftArm = lArm;
+  group.userData.rightArm = rArm;
+
+  const legMat = new THREE.MeshStandardMaterial({ color: colors.shorts });
+  const legGeo = new THREE.CapsuleGeometry(0.08, 0.4, 4, 8);
+  const lLeg = new THREE.Mesh(legGeo, legMat);
+  lLeg.position.set(-0.1, 0.5, 0);
+  group.add(lLeg);
+  const rLeg = new THREE.Mesh(legGeo, legMat);
+  rLeg.position.set(0.1, 0.5, 0);
+  group.add(rLeg);
+  group.userData.leftLeg = lLeg;
+  group.userData.rightLeg = rLeg;
+
+  const shoeMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
+  const shoeGeo = new THREE.BoxGeometry(0.12, 0.08, 0.2);
+  const lShoe = new THREE.Mesh(shoeGeo, shoeMat);
+  lShoe.position.set(-0.1, 0.1, 0.05);
+  group.add(lShoe);
+  const rShoe = new THREE.Mesh(shoeGeo, shoeMat);
+  rShoe.position.set(0.1, 0.1, 0.05);
+  group.add(rShoe);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 64; canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = 'white';
+  ctx.font = 'bold 40px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(data.number.toString(), 32, 32);
+  const tex = new THREE.CanvasTexture(canvas);
+  const numSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex }));
+  numSprite.scale.set(0.4, 0.4, 1);
+  numSprite.position.y = 2.0;
+  group.add(numSprite);
+
+  const ringGeo = new THREE.RingGeometry(0.6, 0.75, 32);
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0xffd700, transparent: true, opacity: 0 });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.03;
+  group.add(ring);
+  group.userData.ring = ring;
+
+  group.position.set(data.position.x, 0, data.position.z);
+  group.rotation.y = data.team === 'home' ? Math.PI / 2 : -Math.PI / 2;
+
+  scene.add(group);
+  playerMeshes.push(group);
+
+  const dragTarget = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.5, 0.5, 2, 8),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  dragTarget.position.copy(group.position);
+  dragTarget.position.y = 1;
+  dragTarget.userData = { id: data.id, type: 'player' };
+  scene.add(dragTarget);
+  playerDragTargets.push(dragTarget);
+
+  return group;
+}
+
+function initScene(playersData, ballData, framesData, playing) {
+  if (sceneInitialized) return;
+  sceneInitialized = true;
+
+  currentPlayersData = playersData;
+  currentBallData = ballData;
+  isPlaying = playing;
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x1a1a2e);
+
+  const w = window.innerWidth || 800;
+  const h = window.innerHeight || 600;
+
+  camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 200);
+  camera.position.set(25, 25, 25);
+  camera.lookAt(0, 0, 0);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(w, h);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  document.body.appendChild(renderer.domElement);
+
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.maxPolarAngle = Math.PI / 2.1;
+  controls.minDistance = 5;
+  controls.maxDistance = 60;
+  controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+  controls.touches = { ONE: null, TWO: THREE.TOUCH.DOLLY_ROTATE };
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+  const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+  dirLight.position.set(20, 30, 10);
+  scene.add(dirLight);
+  const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.3);
+  dirLight2.position.set(-10, 20, -10);
+  scene.add(dirLight2);
+
+  // Court
+  const courtGeo = new THREE.PlaneGeometry(COURT_LENGTH + 4, COURT_WIDTH + 4);
+  const court = new THREE.Mesh(courtGeo, new THREE.MeshStandardMaterial({ color: 0x2d8a4e }));
+  court.rotation.x = -Math.PI / 2;
+  court.receiveShadow = true;
+  scene.add(court);
+
+  const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff });
+  function addLine(points) {
+    const geo = new THREE.BufferGeometry().setFromPoints(
+      points.map(p => new THREE.Vector3(p[0], 0.02, p[1]))
+    );
+    scene.add(new THREE.Line(geo, lineMat));
+  }
+  addLine([[-HL,-HW],[HL,-HW],[HL,HW],[-HL,HW],[-HL,-HW]]);
+  addLine([[0,-HW],[0,HW]]);
+  const cc = [];
+  for (let i = 0; i <= 64; i++) {
+    const a = (i/64)*Math.PI*2;
+    cc.push([Math.cos(a)*3, Math.sin(a)*3]);
+  }
+  addLine(cc);
+  const hpw = 6;
+  addLine([[-HL,-hpw],[-HL+6,-hpw],[-HL+6,hpw],[-HL,hpw]]);
+  addLine([[HL,-hpw],[HL-6,-hpw],[HL-6,hpw],[HL,hpw]]);
+
+  const spot = new THREE.Mesh(
+    new THREE.CircleGeometry(0.2, 16),
+    new THREE.MeshBasicMaterial({ color: 0xffffff })
+  );
+  spot.rotation.x = -Math.PI / 2;
+  spot.position.y = 0.03;
+  scene.add(spot);
+
+  // Goals
+  function addGoal(side) {
+    const x = side === 'left' ? -HL : HL;
+    const dir = side === 'left' ? -1 : 1;
+    const postMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.8 });
+    const postGeo = new THREE.CylinderGeometry(0.05, 0.05, 2, 8);
+    const hgw = 1.5;
+
+    const lp = new THREE.Mesh(postGeo, postMat);
+    lp.position.set(x - dir*0.5, 1, -hgw);
+    scene.add(lp);
+    const rp = new THREE.Mesh(postGeo, postMat);
+    rp.position.set(x - dir*0.5, 1, hgw);
+    scene.add(rp);
+    const barGeo = new THREE.CylinderGeometry(0.05, 0.05, 3, 8);
+    const bar = new THREE.Mesh(barGeo, postMat);
+    bar.rotation.z = Math.PI / 2;
+    bar.position.set(x - dir*0.5, 2, 0);
+    scene.add(bar);
+    const net = new THREE.Mesh(
+      new THREE.BoxGeometry(1, 2, 3),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.15, wireframe: true })
+    );
+    net.position.set(x - dir*0.5, 1, 0);
+    scene.add(net);
+  }
+  addGoal('left');
+  addGoal('right');
+
+  // Players
+  playersData.forEach(p => createPlayer(p));
+
+  // Ball
+  ballGroup = new THREE.Group();
+  ballGroup.userData = { id: 'ball', type: 'ball' };
+  ballMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(0.22, 16, 16),
+    new THREE.MeshStandardMaterial({ color: 0xf0f0f0, roughness: 0.4 })
+  );
+  ballGroup.add(ballMesh);
+  const patternMesh = new THREE.Mesh(
+    new THREE.DodecahedronGeometry(0.18, 0),
+    new THREE.MeshStandardMaterial({ color: 0x333333, wireframe: true, transparent: true, opacity: 0.3 })
+  );
+  ballGroup.add(patternMesh);
+
+  ballShadow = new THREE.Mesh(
+    new THREE.CircleGeometry(0.2, 16),
+    new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 })
+  );
+  ballShadow.rotation.x = -Math.PI / 2;
+  ballShadow.position.set(ballData.x, 0.02, ballData.z);
+  scene.add(ballShadow);
+
+  heightLine = new THREE.Line(
+    new THREE.BufferGeometry(),
+    new THREE.LineBasicMaterial({ color: 0x999999, transparent: true, opacity: 0.5 })
+  );
+  scene.add(heightLine);
+
+  const ballRingGeo = new THREE.RingGeometry(0.35, 0.45, 32);
+  ballRingMat = new THREE.MeshBasicMaterial({ color: 0xffd700, transparent: true, opacity: 0 });
+  ballRing = new THREE.Mesh(ballRingGeo, ballRingMat);
+  ballRing.rotation.x = -Math.PI / 2;
+  ballRing.position.y = 0.03;
+  scene.add(ballRing);
+
+  ballDragTarget = new THREE.Mesh(
+    new THREE.SphereGeometry(0.5, 8, 8),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  ballDragTarget.userData = { id: 'ball', type: 'ball' };
+  scene.add(ballDragTarget);
+
+  ballGroup.position.set(ballData.x, ballData.y, ballData.z);
+  scene.add(ballGroup);
+  updateBallVisuals();
+
+  // Drag system
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+  const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const intersection = new THREE.Vector3();
+
+  function selectObject(obj) {
+    if (selected) {
+      if (selected.type === 'player') {
+        const mesh = playerMeshes.find(m => m.userData.id === selected.id);
+        if (mesh) mesh.userData.ring.material.opacity = 0;
+      } else {
+        ballRingMat.opacity = 0;
+      }
+    }
+    selected = obj;
+    if (selected) {
+      if (selected.type === 'player') {
+        const mesh = playerMeshes.find(m => m.userData.id === selected.id);
+        if (mesh) mesh.userData.ring.material.opacity = 1;
+      } else {
+        ballRingMat.opacity = 1;
+      }
+    }
+  }
+
+  function getMousePos(e) {
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  }
+
+  renderer.domElement.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    getMousePos(e);
+    raycaster.setFromCamera(mouse, camera);
+    const targets = [...playerDragTargets, ballDragTarget];
+    const hits = raycaster.intersectObjects(targets);
+    if (hits.length > 0) {
+      dragging = hits[0].object.userData;
+      selectObject(dragging);
+      controls.enabled = false;
+    } else {
+      selectObject(null);
+    }
+  });
+
+  renderer.domElement.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    getMousePos(e);
+    raycaster.setFromCamera(mouse, camera);
+    raycaster.ray.intersectPlane(groundPlane, intersection);
+
+    const x = Math.max(-HL, Math.min(HL, intersection.x));
+    const z = Math.max(-HW, Math.min(HW, intersection.z));
+
+    if (dragging.type === 'player') {
+      const mesh = playerMeshes.find(m => m.userData.id === dragging.id);
+      const dragT = playerDragTargets.find(t => t.userData.id === dragging.id);
+      if (mesh) { mesh.position.x = x; mesh.position.z = z; }
+      if (dragT) { dragT.position.x = x; dragT.position.z = z; }
+    } else if (dragging.type === 'ball') {
+      ballGroup.position.x = x;
+      ballGroup.position.z = z;
+      updateBallVisuals();
+    }
+  });
+
+  renderer.domElement.addEventListener('pointerup', () => {
+    if (dragging) {
+      dragging = null;
+      controls.enabled = true;
+      // Send updated positions back to Streamlit
+      sendPositionsToStreamlit();
+    }
+  });
+
+  // Animation
+  if (framesData && framesData.length > 1) {
+    animFrames = framesData;
+  }
+
+  clock = new THREE.Clock();
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  function updateAnimation(delta) {
+    if (!isPlaying || animFrames.length < 2) return;
+
+    animProgress += delta * 0.5;
+    if (animProgress >= 1) {
+      animProgress = 0;
+      animPhase++;
+      if (animPhase >= animFrames.length - 1) {
+        animPhase = 0;
+        isPlaying = false;
+        return;
+      }
+    }
+
+    const from = animFrames[animPhase];
+    const to = animFrames[animPhase + 1];
+
+    from.players.forEach((fp, i) => {
+      const tp = to.players[i];
+      const mesh = playerMeshes.find(m => m.userData.id === fp.id);
+      if (mesh && tp) {
+        const nx = lerp(fp.position.x, tp.position.x, animProgress);
+        const nz = lerp(fp.position.z, tp.position.z, animProgress);
+        const dx = Math.abs(tp.position.x - fp.position.x);
+        const dz = Math.abs(tp.position.z - fp.position.z);
+        const moving = dx > 0.1 || dz > 0.1;
+
+        mesh.position.x = nx;
+        mesh.position.z = nz;
+
+        if (moving) {
+          mesh.rotation.y = Math.atan2(tp.position.x - fp.position.x, tp.position.z - fp.position.z);
+          runPhases[fp.id] = (runPhases[fp.id] || 0) + delta * 8;
+          const swing = Math.sin(runPhases[fp.id]) * 0.8;
+          mesh.userData.leftArm.rotation.x = -swing;
+          mesh.userData.rightArm.rotation.x = swing;
+          mesh.userData.leftLeg.rotation.x = swing;
+          mesh.userData.rightLeg.rotation.x = -swing;
+        } else {
+          mesh.userData.leftArm.rotation.x = 0;
+          mesh.userData.rightArm.rotation.x = 0;
+          mesh.userData.leftLeg.rotation.x = 0;
+          mesh.userData.rightLeg.rotation.x = 0;
+        }
+
+        const dragT = playerDragTargets.find(t => t.userData.id === fp.id);
+        if (dragT) { dragT.position.x = nx; dragT.position.z = nz; }
+      }
+    });
+
+    // Ball with parabolic arc using peak height
+    const fb = from.ball_position;
+    const tb = to.ball_position;
+    ballGroup.position.x = lerp(fb.x, tb.x, animProgress);
+    ballGroup.position.z = lerp(fb.z, tb.z, animProgress);
+
+    // Use ball_peak_height for parabolic arc
+    const fromPeak = from.ball_peak_height || 0;
+    const toPeak = to.ball_peak_height || 0;
+    const peakH = Math.max(fromPeak, toPeak, fb.y, tb.y);
+    const baseY = lerp(fb.y, tb.y, animProgress);
+
+    if (peakH > Math.max(fb.y, tb.y) + 0.1) {
+      // Quadratic bezier: (1-t)^2 * start + 2*(1-t)*t * peak + t^2 * end
+      const t = animProgress;
+      const oneMinusT = 1 - t;
+      ballGroup.position.y = oneMinusT * oneMinusT * fb.y + 2 * oneMinusT * t * peakH + t * t * tb.y;
+    } else {
+      const arc = peakH > 0.5 ? Math.sin(animProgress * Math.PI) * peakH * 0.3 : 0;
+      ballGroup.position.y = baseY + arc;
+    }
+
+    updateBallVisuals();
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const delta = clock.getDelta();
+    controls.update();
+    updateAnimation(delta);
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  window.addEventListener('resize', () => {
+    const rw = window.innerWidth;
+    const rh = window.innerHeight;
+    camera.aspect = rw / rh;
+    camera.updateProjectionMatrix();
+    renderer.setSize(rw, rh);
+  });
+}
+
+function updateScene(playersData, ballData, framesData, playing) {
+  if (!sceneInitialized) return;
+
+  // Update player positions
+  playersData.forEach(pd => {
+    const mesh = playerMeshes.find(m => m.userData.id === pd.id);
+    const dragT = playerDragTargets.find(t => t.userData.id === pd.id);
+    if (mesh) {
+      mesh.position.x = pd.position.x;
+      mesh.position.z = pd.position.z;
+    }
+    if (dragT) {
+      dragT.position.x = pd.position.x;
+      dragT.position.z = pd.position.z;
+    }
+  });
+
+  // Update ball
+  ballGroup.position.set(ballData.x, ballData.y, ballData.z);
+  updateBallVisuals();
+
+  // Update animation
+  isPlaying = playing;
+  if (framesData && framesData.length > 1) {
+    animFrames = framesData;
+    if (playing) {
+      animPhase = 0;
+      animProgress = 0;
+    }
+  } else {
+    animFrames = [];
+  }
+}
+
+// Listen for render events from Streamlit
+window.addEventListener("message", (event) => {
+  if (event.data.type !== "streamlit:render") return;
+
+  const args = event.data.args;
+  if (!args) return;
+
+  try {
+    const playersData = typeof args.players === 'string' ? JSON.parse(args.players) : args.players;
+    const ballData = typeof args.ball === 'string' ? JSON.parse(args.ball) : args.ball;
+    const framesData = typeof args.frames === 'string' ? JSON.parse(args.frames) : (args.frames || []);
+    const playing = args.is_playing || false;
+
+    if (!sceneInitialized) {
+      initScene(playersData, ballData, framesData, playing);
+      setFrameHeight(600);
+    } else {
+      updateScene(playersData, ballData, framesData, playing);
+    }
+  } catch(err) {
+    const errDiv = document.getElementById('error');
+    if (errDiv) {
+      errDiv.style.display = 'block';
+      errDiv.textContent = 'Three.js 로딩 실패: ' + err.message;
+    }
+    console.error('Three.js error:', err);
+  }
+});
+
+// Signal ready
+sendToStreamlit("streamlit:componentReady", {apiVersion: 1});
+</script>
+</body>
+</html>
