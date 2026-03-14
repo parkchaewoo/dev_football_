@@ -1,29 +1,7 @@
 import json
 from dataclasses import asdict
-from typing import List, Optional
-import streamlit.components.v1 as st_components
+from typing import List
 from utils.models import Player, Position3D
-
-
-def render_tactical_board(
-    players: List[Player],
-    ball_position: Position3D,
-    frames_data: Optional[list] = None,
-    is_playing: bool = False,
-    height: int = 600,
-    key: str = "tactical_board",
-) -> Optional[dict]:
-    """3D 전술 보드를 렌더링합니다."""
-    frames_json = json.dumps(frames_data) if frames_data else "[]"
-    board_html = generate_board_html(
-        players=players,
-        ball_position=ball_position,
-        ball_height=0.22,
-        frames_data=frames_json,
-        is_playing=is_playing,
-    )
-    st_components.html(board_html, height=height, scrolling=False)
-    return None
 
 
 def generate_board_html(
@@ -535,7 +513,7 @@ try {{
     const peakHeight = to.ball_peak_height || 0;
 
     if (trajectory === "parabolic" && peakHeight > 0) {{
-      // Quadratic bezier: start Y -> peak -> end Y
+      // Quadratic bezier: start Y → peak → end Y
       const t = animProgress;
       const startY = fb.y;
       const endY = tb.y;

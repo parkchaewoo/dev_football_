@@ -1,11 +1,13 @@
 """전술 보드 페이지 - 3D 전술 보드, 프레임/단계 관리, 소셜 기능."""
 import streamlit as st
+import streamlit.components.v1 as st_components
+import json
 import copy
 from dataclasses import asdict
 from utils.models import (
     generate_id, Position3D, Frame, Phase,
 )
-from components.tactical_board import render_tactical_board
+from components.tactical_board import generate_board_html
 
 
 def render_tactical_board_page():
@@ -26,7 +28,7 @@ def render_tactical_board_page():
     current_frame = current_phase.frames[frame_idx]
 
     # ===== Frame controls =====
-    frame_col1, frame_col2, frame_col3, frame_col4 = st.columns([2, 2, 2, 2])
+    frame_col1, frame_col2, frame_col3, frame_col4, frame_col5 = st.columns([2, 2, 2, 2, 4])
 
     with frame_col1:
         if st.button("+ 프레임 추가", key="tb_add_frame"):
@@ -34,7 +36,7 @@ def render_tactical_board_page():
             new_frame = Frame(
                 id=generate_id(),
                 players=copy.deepcopy(last_frame.players),
-                ball_position=Position3D(last_frame.ball_position.x, 0, last_frame.ball_position.z),
+                ball_position=copy.deepcopy(last_frame.ball_position),
                 ball_peak_height=0.0,
                 ball_trajectory="linear",
             )
@@ -66,6 +68,16 @@ def render_tactical_board_page():
         can_play = len(current_phase.frames) >= 2
         play_label = "▶ 전체 재생" if can_play else "(2프레임 이상)"
         is_playing = st.button(play_label, disabled=not can_play, key="tb_play")
+
+    with frame_col5:
+        ball_h = st.slider(
+            "공 높이",
+            min_value=0.0, max_value=8.0, value=float(current_frame.ball_position.y),
+            step=0.1, format="%.1fm", label_visibility="collapsed",
+            key="tb_ball_h",
+        )
+        if abs(ball_h - current_frame.ball_position.y) > 0.01:
+            current_frame.ball_position.y = ball_h
 
     # Ball trajectory and peak height controls (when 2+ frames)
     if len(current_phase.frames) >= 2:
@@ -110,38 +122,21 @@ def render_tactical_board_page():
         for f in current_phase.frames:
             frames_for_js.append(asdict(f))
 
-    # 3D Board (bidirectional: declare_component)
-    drag_result = render_tactical_board(
+    # 3D Board (one-way: Python → JS via st.components.v1.html)
+    board_html = generate_board_html(
         players=current_frame.players,
         ball_position=current_frame.ball_position,
-        frames_data=frames_for_js,
+        frames_data=json.dumps(frames_for_js),
         is_playing=is_playing,
     )
-
-    # Handle drag result from JS component
-    if drag_result and isinstance(drag_result, dict):
-        changed = False
-        for dp in drag_result.get("players", []):
-            for p in current_frame.players:
-                if p.id == dp["id"]:
-                    if abs(p.position.x - dp["x"]) > 0.01 or abs(p.position.z - dp["z"]) > 0.01:
-                        p.position.x = dp["x"]
-                        p.position.z = dp["z"]
-                        changed = True
-        bp = drag_result.get("ball")
-        if bp:
-            if abs(current_frame.ball_position.x - bp["x"]) > 0.01 or abs(current_frame.ball_position.z - bp["z"]) > 0.01:
-                current_frame.ball_position.x = bp["x"]
-                current_frame.ball_position.z = bp["z"]
-                changed = True
-        if changed:
-            st.rerun()
+    st_components.html(board_html, height=600, scrolling=False)
 
     # Info
     st.caption(
         f"📋 {strategy.name or '(이름 없음)'} | "
         f"📍 {current_phase.name} | "
-        f"🎞️ 프레임 {frame_idx + 1}/{len(current_phase.frames)}"
+        f"🎞️ 프레임 {frame_idx + 1}/{len(current_phase.frames)} | "
+        f"⚽ 공 높이: {'지면' if ball_h <= 0.3 else f'{ball_h:.1f}m'}"
     )
 
     # ===== POSITION EDITOR =====
@@ -149,7 +144,7 @@ def render_tactical_board_page():
         st.caption("아래에서 정밀 좌표를 수정하면 3D 보드에 즉시 반영됩니다.")
 
         st.markdown("**⚽ 공 위치**")
-        ball_cols = st.columns(2)
+        ball_cols = st.columns(3)
         with ball_cols[0]:
             new_ball_x = st.number_input(
                 "공 X (좌우)", min_value=-20.0, max_value=20.0,
@@ -162,10 +157,18 @@ def render_tactical_board_page():
                 value=float(current_frame.ball_position.z), step=0.5,
                 key="tb_ball_z", format="%.1f",
             )
+        with ball_cols[2]:
+            new_ball_y = st.number_input(
+                "공 높이 (Y)", min_value=0.0, max_value=8.0,
+                value=float(current_frame.ball_position.y), step=0.1,
+                key="tb_ball_y", format="%.1f",
+            )
         if (abs(new_ball_x - current_frame.ball_position.x) > 0.01 or
-                abs(new_ball_z - current_frame.ball_position.z) > 0.01):
+                abs(new_ball_z - current_frame.ball_position.z) > 0.01 or
+                abs(new_ball_y - current_frame.ball_position.y) > 0.01):
             current_frame.ball_position.x = new_ball_x
             current_frame.ball_position.z = new_ball_z
+            current_frame.ball_position.y = new_ball_y
 
         st.divider()
 
