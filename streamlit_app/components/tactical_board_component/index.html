@@ -143,6 +143,21 @@
     transition: opacity 0.15s;
   }
   .ball.selected .ball-ring { opacity:1; }
+  .ball-height-line {
+    position:absolute;
+    left:50%; bottom:0;
+    width:2px;
+    transform-origin: bottom center;
+    transform: rotateX(-90deg);
+    background: repeating-linear-gradient(
+      180deg,
+      rgba(255,255,0,0.7) 0px, rgba(255,255,0,0.7) 3px,
+      transparent 3px, transparent 6px
+    );
+    pointer-events:none;
+    opacity:0;
+    transition: opacity 0.1s;
+  }
   #info {
     position:absolute; bottom:8px; left:50%;
     transform:translateX(-50%);
@@ -312,16 +327,16 @@ function createPlayerEl(data) {
   shadow.style.cssText = 'left:-4px;top:2px;width:'+(P_SIZE+8)+'px;height:'+(P_SIZE*0.5)+'px;';
   el.appendChild(shadow);
 
-  // 3D upright body - soccer player silhouette
-  const bodyH = P_SIZE * 2.2;
+  // 3D upright body - soccer player silhouette (1:7.5 human ratio)
+  const bodyH = P_SIZE * 2.8;
   const bodyW = P_SIZE - 2;
   const body = document.createElement('div');
   body.className = 'player-body';
   body.style.cssText = 'left:1px;bottom:0;width:'+bodyW+'px;height:'+bodyH+'px;';
 
   // Create soccer player using layered divs
-  // Head
-  const headS = Math.round(bodyW * 0.55);
+  // Head (~13% of body height for realistic proportion)
+  const headS = Math.round(bodyW * 0.42);
   const head = document.createElement('div');
   head.style.cssText = 'position:absolute;top:0;left:50%;transform:translateX(-50%);width:'+headS+'px;height:'+headS+'px;border-radius:50%;background:radial-gradient(circle at 40% 35%, #f5d0a9, #d4a574);box-shadow:0 1px 2px rgba(0,0,0,0.2);';
   // Hair
@@ -331,7 +346,7 @@ function createPlayerEl(data) {
   body.appendChild(head);
 
   // Jersey (upper body)
-  const jerseyH = Math.round(bodyH * 0.30);
+  const jerseyH = Math.round(bodyH * 0.28);
   const jerseyTop = headS - 1;
   const jersey = document.createElement('div');
   jersey.style.cssText = 'position:absolute;top:'+jerseyTop+'px;left:0;width:100%;height:'+jerseyH+'px;'
@@ -351,7 +366,7 @@ function createPlayerEl(data) {
   body.appendChild(rArm);
 
   // Shorts
-  const shortsH = Math.round(bodyH * 0.15);
+  const shortsH = Math.round(bodyH * 0.12);
   const shortsTop = jerseyTop + jerseyH - 1;
   const shorts = document.createElement('div');
   shorts.style.cssText = 'position:absolute;top:'+shortsTop+'px;left:0;width:100%;height:'+shortsH+'px;background:'+shortsColor+';border-radius:0 0 2px 2px;';
@@ -359,7 +374,7 @@ function createPlayerEl(data) {
 
   // Legs (skin + socks)
   const legW = Math.max(2, Math.round(bodyW * 0.22));
-  const legH = Math.round(bodyH * 0.28);
+  const legH = Math.round(bodyH * 0.34);
   const legTop = shortsTop + shortsH - 1;
   const sockColor = isHome ? '#fff' : '#1a1a2e';
   // Left leg
@@ -441,6 +456,10 @@ const ballSphere = document.createElement('div');
 ballSphere.className = 'ball-sphere';
 ballSphere.style.cssText = 'left:0;bottom:0;width:'+B_SIZE+'px;height:'+(B_SIZE*1.4)+'px;';
 ballEl.appendChild(ballSphere);
+
+const ballHeightLine = document.createElement('div');
+ballHeightLine.className = 'ball-height-line';
+ballEl.appendChild(ballHeightLine);
 
 const ballRing = document.createElement('div');
 ballRing.className = 'ball-ring';
@@ -594,6 +613,7 @@ function animLoop(ts) {
       ballSphere.style.transform = 'rotateX(-90deg)';
       ballShadow.style.opacity = '1';
       ballShadow.style.transform = 'scale(1)';
+      ballHeightLine.style.opacity = '0';
 
       animPhase = 0;
       isPlaying = false;
@@ -640,12 +660,17 @@ function animLoop(ts) {
   const hPx = ballH * SCALE;
   if (hPx > 1) {
     ballSphere.style.transform = 'rotateX(-90deg) translateY(-' + hPx + 'px)';
-    ballShadow.style.opacity = Math.max(0.1, 1 - ballH * 0.08).toFixed(2);
-    ballShadow.style.transform = 'scale(' + Math.max(0.3, 1 - ballH * 0.04).toFixed(2) + ')';
+    // More dramatic shadow: shrinks and fades faster with height
+    ballShadow.style.opacity = Math.max(0.05, 1 - ballH * 0.15).toFixed(2);
+    ballShadow.style.transform = 'scale(' + Math.max(0.15, 1 - ballH * 0.08).toFixed(2) + ')';
+    // Show dotted height line from ground to ball
+    ballHeightLine.style.height = hPx + 'px';
+    ballHeightLine.style.opacity = '1';
   } else {
     ballSphere.style.transform = 'rotateX(-90deg)';
     ballShadow.style.opacity = '1';
     ballShadow.style.transform = 'scale(1)';
+    ballHeightLine.style.opacity = '0';
   }
 
   requestAnimationFrame(animLoop);

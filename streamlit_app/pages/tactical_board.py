@@ -26,12 +26,14 @@ def render_tactical_board_page():
         st.session_state.current_frame_idx = 0
     current_frame = current_phase.frames[frame_idx]
 
+    # Frame-key prefix to prevent Streamlit widget state caching across frames
+    fk = f"f{frame_idx}_"
+
     # ===== Frame controls =====
     frame_col1, frame_col2, frame_col3, frame_col4, frame_col5 = st.columns([2, 2, 2, 2, 4])
 
     with frame_col1:
         if st.button("+ 프레임 추가", key="tb_add_frame"):
-            # Bug 3 fix: copy CURRENT frame (not last), insert AFTER current position
             cur_frame = current_phase.frames[frame_idx]
             new_frame = Frame(
                 id=generate_id(),
@@ -42,6 +44,9 @@ def render_tactical_board_page():
             )
             current_phase.frames.insert(frame_idx + 1, new_frame)
             st.session_state.current_frame_idx = frame_idx + 1
+            # Clear selectbox cached state to match new index
+            if "tb_frame_sel" in st.session_state:
+                del st.session_state["tb_frame_sel"]
             st.rerun()
 
     with frame_col2:
@@ -49,6 +54,8 @@ def render_tactical_board_page():
             if st.button("- 프레임 삭제", key="tb_del_frame"):
                 current_phase.frames.pop(frame_idx)
                 st.session_state.current_frame_idx = min(frame_idx, len(current_phase.frames) - 1)
+                if "tb_frame_sel" in st.session_state:
+                    del st.session_state["tb_frame_sel"]
                 st.rerun()
 
     with frame_col3:
@@ -69,18 +76,19 @@ def render_tactical_board_page():
         play_label = "▶ 전체 재생" if can_play else "(2프레임 이상)"
         is_playing = st.button(play_label, disabled=not can_play, key="tb_play")
 
-    # Bug 4 fix: when playing, always start from frame 1
+    # When playing, always start from frame 1
     if is_playing:
         st.session_state.current_frame_idx = 0
         frame_idx = 0
         current_frame = current_phase.frames[0]
+        fk = "f0_"
 
     with frame_col5:
         ball_h = st.slider(
             "공 높이",
             min_value=0.0, max_value=8.0, value=float(current_frame.ball_position.y),
             step=0.1, format="%.1fm", label_visibility="collapsed",
-            key="tb_ball_h",
+            key=fk + "ball_h",
         )
         if abs(ball_h - current_frame.ball_position.y) > 0.01:
             current_frame.ball_position.y = ball_h
@@ -92,12 +100,11 @@ def render_tactical_board_page():
             trajectory_options = ["일반 (직선)", "포물선"]
             current_traj = getattr(current_frame, 'ball_trajectory', 'linear')
             traj_idx = 0 if current_traj == "linear" else 1
-            # Frame-specific key to avoid Streamlit widget state caching across frames
             traj_sel = st.selectbox(
                 "공 궤적 타입",
                 trajectory_options,
                 index=traj_idx,
-                key=f"tb_ball_traj_{frame_idx}",
+                key=fk + "ball_traj",
             )
             new_traj = "linear" if traj_sel == "일반 (직선)" else "parabolic"
             if new_traj != current_traj:
@@ -112,7 +119,7 @@ def render_tactical_board_page():
                     value=max(0.5, float(getattr(current_frame, 'ball_peak_height', 3.0))),
                     step=0.5, format="%.1fm",
                     help="로브패스 2~4m, 슈팅 1~2m, 프리킥 5~7m",
-                    key=f"tb_ball_peak_{frame_idx}",
+                    key=fk + "ball_peak",
                 )
                 if abs(peak_h - current_frame.ball_peak_height) > 0.01:
                     current_frame.ball_peak_height = peak_h
@@ -139,7 +146,7 @@ def render_tactical_board_page():
         key=f"tb_board_{frame_idx}",
     )
 
-    # Bug 1, 2 fix: apply drag positions to session state
+    # Apply drag positions to session state
     if drag_result:
         for dp in drag_result.get("players", []):
             for p in current_frame.players:
@@ -170,19 +177,19 @@ def render_tactical_board_page():
             new_ball_x = st.number_input(
                 "공 X (좌우)", min_value=-20.0, max_value=20.0,
                 value=float(current_frame.ball_position.x), step=0.5,
-                key="tb_ball_x", format="%.1f",
+                key=fk + "ball_x", format="%.1f",
             )
         with ball_cols[1]:
             new_ball_z = st.number_input(
                 "공 Z (상하)", min_value=-10.0, max_value=10.0,
                 value=float(current_frame.ball_position.z), step=0.5,
-                key="tb_ball_z", format="%.1f",
+                key=fk + "ball_z", format="%.1f",
             )
         with ball_cols[2]:
             new_ball_y = st.number_input(
                 "공 높이 (Y)", min_value=0.0, max_value=8.0,
                 value=float(current_frame.ball_position.y), step=0.1,
-                key="tb_ball_y", format="%.1f",
+                key=fk + "ball_y", format="%.1f",
             )
         if (abs(new_ball_x - current_frame.ball_position.x) > 0.01 or
                 abs(new_ball_z - current_frame.ball_position.z) > 0.01 or
@@ -205,13 +212,13 @@ def render_tactical_board_page():
                     nx = st.number_input(
                         f"#{p.number} X", min_value=-20.0, max_value=20.0,
                         value=float(p.position.x), step=0.5,
-                        key=f"tb_p_{p.id}_x", format="%.1f",
+                        key=fk + f"p_{p.id}_x", format="%.1f",
                     )
                 with pc2:
                     nz = st.number_input(
                         f"#{p.number} Z", min_value=-10.0, max_value=10.0,
                         value=float(p.position.z), step=0.5,
-                        key=f"tb_p_{p.id}_z", format="%.1f",
+                        key=fk + f"p_{p.id}_z", format="%.1f",
                     )
                 if abs(nx - p.position.x) > 0.01 or abs(nz - p.position.z) > 0.01:
                     p.position.x = nx
@@ -225,13 +232,13 @@ def render_tactical_board_page():
                     nx = st.number_input(
                         f"#{p.number} X", min_value=-20.0, max_value=20.0,
                         value=float(p.position.x), step=0.5,
-                        key=f"tb_p_{p.id}_x", format="%.1f",
+                        key=fk + f"p_{p.id}_x", format="%.1f",
                     )
                 with pc2:
                     nz = st.number_input(
                         f"#{p.number} Z", min_value=-10.0, max_value=10.0,
                         value=float(p.position.z), step=0.5,
-                        key=f"tb_p_{p.id}_z", format="%.1f",
+                        key=fk + f"p_{p.id}_z", format="%.1f",
                     )
                 if abs(nx - p.position.x) > 0.01 or abs(nz - p.position.z) > 0.01:
                     p.position.x = nx
