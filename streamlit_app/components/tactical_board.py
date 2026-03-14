@@ -31,8 +31,8 @@ def generate_board_html(
 </head>
 <body>
 <div id="info">마우스 드래그: 선수/공 이동 | 우클릭 드래그: 카메라 회전 | 스크롤: 줌</div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.0/examples/js/controls/OrbitControls.js"></script>
 <script>
 (function() {{
   // ===== CONFIG =====
@@ -50,11 +50,15 @@ def generate_board_html(
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x1a1a2e);
 
-  const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 200);
+  const w = document.body.clientWidth || window.innerWidth || 800;
+  const h = document.body.clientHeight || window.innerHeight || 600;
+
+  const camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 200);
   camera.position.set(25, 25, 25);
 
   const renderer = new THREE.WebGLRenderer({{ antialias: true }});
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setSize(w, h);
+  renderer.setPixelRatio(window.devicePixelRatio);
   renderer.shadowMap.enabled = true;
   document.body.appendChild(renderer.domElement);
 
@@ -75,7 +79,9 @@ def generate_board_html(
   const dirLight = new THREE.DirectionalLight(0xffffff, 1);
   dirLight.position.set(20, 30, 10);
   scene.add(dirLight);
-  scene.add(new THREE.DirectionalLight(0xffffff, 0.3).position.set(-10, 20, -10));
+  const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.3);
+  dirLight2.position.set(-10, 20, -10);
+  scene.add(dirLight2);
 
   // ===== COURT =====
   const courtGeo = new THREE.PlaneGeometry(COURT_LENGTH + 4, COURT_WIDTH + 4);
@@ -512,9 +518,11 @@ def generate_board_html(
 
   // Resize
   window.addEventListener('resize', () => {{
-    camera.aspect = window.innerWidth / window.innerHeight;
+    const rw = document.body.clientWidth || window.innerWidth;
+    const rh = document.body.clientHeight || window.innerHeight;
+    camera.aspect = rw / rh;
     camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setSize(rw, rh);
   }});
 }})();
 </script>
