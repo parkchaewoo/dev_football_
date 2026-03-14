@@ -80,3 +80,55 @@ def has_liked(strategy_id: str, user_id: str) -> bool:
         return False
     like_id = f"{strategy_id}__{user_id}"
     return db.collection("likes").document(like_id).get().exists
+
+
+# ===== 병원 리뷰 =====
+
+def add_hospital_review(
+    body_part: str,
+    hospital_keyword: str,
+    author_id: str,
+    author_name: str,
+    text: str,
+    rating: int,
+) -> dict | None:
+    """병원 리뷰 추가."""
+    db = get_firestore_client()
+    if not db:
+        return None
+
+    review_data = {
+        "bodyPart": body_part,
+        "hospitalKeyword": hospital_keyword,
+        "authorId": author_id,
+        "authorName": author_name,
+        "text": text,
+        "rating": max(1, min(5, rating)),
+        "createdAt": int(time.time() * 1000),
+    }
+    _, ref = db.collection("hospital_reviews").add(review_data)
+    review_data["id"] = ref.id
+    return review_data
+
+
+def get_hospital_reviews(body_part: str, hospital_keyword: str) -> list:
+    """특정 부위+병원 키워드에 대한 리뷰 목록 조회."""
+    db = get_firestore_client()
+    if not db:
+        return []
+    docs = (
+        db.collection("hospital_reviews")
+        .where("bodyPart", "==", body_part)
+        .where("hospitalKeyword", "==", hospital_keyword)
+        .order_by("createdAt")
+        .get()
+    )
+    return [{"id": d.id, **d.to_dict()} for d in docs]
+
+
+def delete_hospital_review(review_id: str) -> None:
+    """병원 리뷰 삭제."""
+    db = get_firestore_client()
+    if not db:
+        return
+    db.collection("hospital_reviews").document(review_id).delete()

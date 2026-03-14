@@ -78,9 +78,9 @@ def render_injury_hospital_page():
     # ===== AD PLACEHOLDER (TOP) =====
     with st.container():
         st.markdown(
-            """<div style="background: linear-gradient(90deg, #1e3a5f, #2d5a8e);
+            """<div style="background: linear-gradient(90deg, #e0e7ff, #c7d2fe);
             border-radius: 8px; padding: 12px 20px; margin-bottom: 16px;
-            text-align: center; color: #94a3b8; font-size: 13px;">
+            text-align: center; color: #64748b; font-size: 13px;">
             📢 광고 영역 (Ad Space) — 스포츠 용품, 보호대, 테이핑 등
             </div>""",
             unsafe_allow_html=True,
@@ -145,7 +145,10 @@ def render_injury_hospital_page():
     if location:
         st.session_state.injury_location = location
 
-    # Hospital search links
+    # Hospital search links + reviews
+    firebase_ok = st.session_state.get("firebase_ok", False)
+    user = st.session_state.get("user")
+
     st.markdown("**추천 진료과:**")
     for keyword in data["hospital_keywords"]:
         search_query = f"{location} {keyword}" if location else keyword
@@ -161,6 +164,65 @@ def render_injury_hospital_page():
                 naver_map_url,
                 use_container_width=True,
             )
+
+        # Reviews section for this hospital keyword
+        if firebase_ok:
+            from services.social_service import (
+                add_hospital_review, get_hospital_reviews, delete_hospital_review
+            )
+            import datetime
+
+            reviews = get_hospital_reviews(selected_part, keyword)
+
+            if reviews:
+                avg_rating = sum(r.get("rating", 0) for r in reviews) / len(reviews)
+                stars = "⭐" * round(avg_rating)
+                st.caption(f"{stars} 평균 {avg_rating:.1f}점 ({len(reviews)}개 리뷰)")
+
+                for r in reviews:
+                    r_col1, r_col2 = st.columns([9, 1])
+                    with r_col1:
+                        r_stars = "⭐" * r.get("rating", 0)
+                        ts = r.get("createdAt", 0)
+                        date_str = datetime.datetime.fromtimestamp(ts / 1000).strftime("%m/%d") if ts else ""
+                        st.markdown(
+                            f"{r_stars} **{r.get('authorName', '?')}**: {r.get('text', '')} "
+                            f"<span style='color:#94a3b8;font-size:12px;'>{date_str}</span>",
+                            unsafe_allow_html=True,
+                        )
+                    with r_col2:
+                        if user and r.get("authorId") == user.get("uid"):
+                            if st.button("×", key=f"del_review_{r['id']}"):
+                                delete_hospital_review(r["id"])
+                                st.rerun()
+
+            # Review form
+            if user:
+                with st.expander(f"📝 {keyword} 리뷰 작성", expanded=False):
+                    review_rating = st.select_slider(
+                        "별점",
+                        options=[1, 2, 3, 4, 5],
+                        value=5,
+                        format_func=lambda x: "⭐" * x,
+                        key=f"review_rating_{keyword}",
+                    )
+                    review_text = st.text_input(
+                        "리뷰 내용",
+                        placeholder="병원 이용 후기를 남겨주세요...",
+                        key=f"review_text_{keyword}",
+                    )
+                    if st.button("리뷰 등록", key=f"submit_review_{keyword}"):
+                        if review_text.strip():
+                            add_hospital_review(
+                                selected_part, keyword,
+                                user["uid"], user["displayName"],
+                                review_text.strip(), review_rating,
+                            )
+                            st.rerun()
+                        else:
+                            st.warning("리뷰 내용을 입력해주세요.")
+            else:
+                st.caption("로그인하면 리뷰를 작성할 수 있습니다.")
 
     # Quick emergency search
     if location:
@@ -178,9 +240,9 @@ def render_injury_hospital_page():
     st.divider()
     with st.container():
         st.markdown(
-            """<div style="background: linear-gradient(90deg, #3a1e1e, #5a2d2d);
+            """<div style="background: linear-gradient(90deg, #fce7f3, #fbcfe8);
             border-radius: 8px; padding: 16px 20px; margin-top: 8px;
-            text-align: center; color: #94a3b8; font-size: 13px;">
+            text-align: center; color: #64748b; font-size: 13px;">
             📢 광고 영역 (Ad Space) — 스포츠 보험, 부상 예방 프로그램 등
             </div>""",
             unsafe_allow_html=True,

@@ -1,7 +1,40 @@
 import json
+import os
 from dataclasses import asdict
-from typing import List
+from typing import List, Optional
+import streamlit.components.v1 as st_components
 from utils.models import Player, Position3D
+
+
+_COMPONENT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tactical_board_component")
+_tactical_board_component = st_components.declare_component("tactical_board", path=_COMPONENT_DIR)
+
+
+def render_tactical_board(
+    players: List[Player],
+    ball_position: Position3D,
+    frames_data: Optional[list] = None,
+    is_playing: bool = False,
+    height: int = 600,
+    key: str = "tactical_board",
+) -> Optional[dict]:
+    """양방향 Streamlit 컴포넌트로 3D 전술 보드를 렌더링합니다.
+
+    드래그 결과를 반환합니다 (dict with 'players' and 'ball' keys).
+    """
+    players_list = [asdict(p) for p in players]
+    ball_dict = asdict(ball_position)
+
+    result = _tactical_board_component(
+        players=players_list,
+        ball=ball_dict,
+        frames=frames_data or [],
+        is_playing=is_playing,
+        height=height,
+        key=key,
+        default=None,
+    )
+    return result
 
 
 def generate_board_html(
@@ -23,12 +56,12 @@ def generate_board_html(
     margin: 0; padding: 0;
     width: 100%; height: 100%;
     overflow: hidden;
-    background: #1a1a2e;
+    background: #e8f4f8;
   }}
   canvas {{ display: block; width: 100%; height: 100%; }}
   #info {{
     position: absolute; top: 8px; left: 8px;
-    color: #888; font: 12px sans-serif;
+    color: #555; font: 12px sans-serif;
     pointer-events: none; z-index: 10;
   }}
   #error {{
@@ -71,7 +104,7 @@ try {{
 
   // ===== SCENE SETUP =====
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x1a1a2e);
+  scene.background = new THREE.Color(0xe8f4f8);
 
   const w = window.innerWidth || 800;
   const h = window.innerHeight || 600;
@@ -333,7 +366,7 @@ try {{
   ballDragTarget.userData = {{ id: 'ball', type: 'ball' }};
   scene.add(ballDragTarget);
 
-  ballGroup.position.set(ballData.x, ballData.y, ballData.z);
+  ballGroup.position.set(ballData.x, 0.22, ballData.z);
   scene.add(ballGroup);
 
   function updateBallVisuals() {{
@@ -513,16 +546,14 @@ try {{
     const peakHeight = to.ball_peak_height || 0;
 
     if (trajectory === "parabolic" && peakHeight > 0) {{
-      // Quadratic bezier: start Y → peak → end Y
+      // Quadratic bezier: ground → peak → ground
       const t = animProgress;
-      const startY = fb.y;
-      const endY = tb.y;
       const controlY = peakHeight;
-      // B(t) = (1-t)^2 * P0 + 2(1-t)t * P1 + t^2 * P2
-      ballGroup.position.y = (1-t)*(1-t)*startY + 2*(1-t)*t*controlY + t*t*endY;
+      // B(t) = (1-t)^2 * P0 + 2(1-t)t * P1 + t^2 * P2 (start=0.22, end=0.22)
+      ballGroup.position.y = (1-t)*(1-t)*0.22 + 2*(1-t)*t*controlY + t*t*0.22;
     }} else {{
-      // Linear interpolation
-      ballGroup.position.y = lerp(fb.y, tb.y, animProgress);
+      // Ball stays on ground
+      ballGroup.position.y = 0.22;
     }}
     updateBallVisuals();
   }}

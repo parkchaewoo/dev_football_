@@ -43,7 +43,7 @@ if not st.session_state.user:
         <div style="text-align:center; padding:60px 0;">
             <div style="font-size:80px;">⚽</div>
             <h1>풋살 전술 보드</h1>
-            <p style="color:#888;">팀원들과 전술을 만들고 공유하세요</p>
+            <p style="color:#64748b;">팀원들과 전술을 만들고 공유하세요</p>
         </div>
         """,
         unsafe_allow_html=True,
