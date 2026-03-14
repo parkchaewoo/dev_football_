@@ -1,13 +1,12 @@
 """전술 보드 페이지 - 3D 전술 보드, 프레임/단계 관리, 소셜 기능."""
 import streamlit as st
-import streamlit.components.v1 as st_components
 import json
 import copy
 from dataclasses import asdict
 from utils.models import (
     generate_id, Position3D, Frame, Phase,
 )
-from components.tactical_board import generate_board_html
+from components.tactical_board import tactical_board_component
 
 
 def render_tactical_board_page():
@@ -32,16 +31,17 @@ def render_tactical_board_page():
 
     with frame_col1:
         if st.button("+ 프레임 추가", key="tb_add_frame"):
-            last_frame = current_phase.frames[-1]
+            # Bug 3 fix: copy CURRENT frame (not last), insert AFTER current position
+            cur_frame = current_phase.frames[frame_idx]
             new_frame = Frame(
                 id=generate_id(),
-                players=copy.deepcopy(last_frame.players),
-                ball_position=copy.deepcopy(last_frame.ball_position),
+                players=copy.deepcopy(cur_frame.players),
+                ball_position=copy.deepcopy(cur_frame.ball_position),
                 ball_peak_height=0.0,
                 ball_trajectory="linear",
             )
-            current_phase.frames.append(new_frame)
-            st.session_state.current_frame_idx = len(current_phase.frames) - 1
+            current_phase.frames.insert(frame_idx + 1, new_frame)
+            st.session_state.current_frame_idx = frame_idx + 1
             st.rerun()
 
     with frame_col2:
@@ -68,6 +68,12 @@ def render_tactical_board_page():
         can_play = len(current_phase.frames) >= 2
         play_label = "▶ 전체 재생" if can_play else "(2프레임 이상)"
         is_playing = st.button(play_label, disabled=not can_play, key="tb_play")
+
+    # Bug 4 fix: when playing, always start from frame 1
+    if is_playing:
+        st.session_state.current_frame_idx = 0
+        frame_idx = 0
+        current_frame = current_phase.frames[0]
 
     with frame_col5:
         ball_h = st.slider(
@@ -122,14 +128,27 @@ def render_tactical_board_page():
         for f in current_phase.frames:
             frames_for_js.append(asdict(f))
 
-    # 3D Board (one-way: Python → JS via st.components.v1.html)
-    board_html = generate_board_html(
+    # 3D Board (bidirectional component via declare_component)
+    drag_result = tactical_board_component(
         players=current_frame.players,
         ball_position=current_frame.ball_position,
-        frames_data=json.dumps(frames_for_js),
+        frames=frames_for_js,
         is_playing=is_playing,
+        key=f"tb_board_{frame_idx}",
     )
-    st_components.html(board_html, height=600, scrolling=False)
+
+    # Bug 1, 2 fix: apply drag positions to session state
+    if drag_result:
+        for dp in drag_result.get("players", []):
+            for p in current_frame.players:
+                if p.id == dp["id"]:
+                    p.position.x = dp["x"]
+                    p.position.z = dp["z"]
+        ball = drag_result.get("ball")
+        if ball:
+            current_frame.ball_position.x = ball["x"]
+            current_frame.ball_position.z = ball["z"]
+        st.rerun()
 
     # Info
     st.caption(
