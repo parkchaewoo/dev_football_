@@ -2,7 +2,6 @@
 import streamlit as st
 import json
 import copy
-from dataclasses import asdict
 from utils.models import (
     generate_id, Position3D, Frame, Phase,
 )
@@ -131,11 +130,19 @@ def render_tactical_board_page():
                 "💡 **일반**: 공이 직선으로 이동 | **포물선**: 공이 올라갔다 내려옴"
             )
 
-    # Prepare frames data for animation
+    # Prepare frames data for animation (minimal data to reduce memory)
     frames_for_js = []
     if is_playing:
         for f in current_phase.frames:
-            frames_for_js.append(asdict(f))
+            frames_for_js.append({
+                "players": [
+                    {"id": p.id, "position": {"x": p.position.x, "z": p.position.z}}
+                    for p in f.players
+                ],
+                "ball_position": {"x": f.ball_position.x, "y": f.ball_position.y, "z": f.ball_position.z},
+                "ball_trajectory": getattr(f, 'ball_trajectory', 'linear'),
+                "ball_peak_height": getattr(f, 'ball_peak_height', 0.0),
+            })
 
     # 3D Board (bidirectional component via declare_component)
     drag_result = tactical_board_component(
