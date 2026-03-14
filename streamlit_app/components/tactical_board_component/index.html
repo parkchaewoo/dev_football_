@@ -69,7 +69,6 @@
     transform: rotateX(-90deg);
     border-radius: 2px;
   }
-  /* Moving elements - GPU accelerated */
   .player, .ball {
     position:absolute;
     left:0; top:0;
@@ -82,7 +81,6 @@
   .player { z-index:10; }
   .ball { z-index:9; }
   .player:active, .ball:active { cursor:grabbing; }
-  /* Invisible expanded hit area for easier clicking */
   .player-hitarea, .ball-hitarea {
     position:absolute;
     border-radius:50%;
@@ -95,7 +93,6 @@
     background: radial-gradient(ellipse, rgba(0,0,0,0.4) 0%, transparent 70%);
     pointer-events:none;
   }
-  /* 3D upright player body */
   .player-body {
     position:absolute;
     transform-origin: bottom center;
@@ -190,6 +187,14 @@
     opacity:0; transition: opacity 0.3s;
   }
   #frame-indicator.visible { opacity:1; }
+  #debug {
+    position:absolute; top:8px; right:8px;
+    color:rgba(255,255,255,0.5); font-size:10px;
+    pointer-events:none; z-index:100;
+    background:rgba(0,0,0,0.4);
+    padding:4px 8px; border-radius:6px;
+    font-family: monospace;
+  }
 </style>
 </head>
 <body>
@@ -200,6 +205,7 @@
 </div>
 <div id="frame-indicator"></div>
 <div id="info"></div>
+<div id="debug"></div>
 
 <script>
 // ===== STREAMLIT COMPONENT COMMUNICATION =====
@@ -219,15 +225,19 @@ function signalReady() {
 
 // ===== CONFIG =====
 const CW = 40, CH = 20;
-const SCALE = 18;            // 1 meter = 18 pixels
-const PX_W = CW * SCALE, PX_H = CH * SCALE;
+const SCALE = 18;
+const PX_W = CW * SCALE, PX_H = CH * SCALE;  // 720 x 360
 const PENALTY_LEN = 6, PENALTY_W = 12, CENTER_R = 3;
 const GOAL_W = 3, GOAL_D = 1.5, GOAL_H_PX = 36;
-const P_SIZE = 16;           // Visual player size
-const P_HIT = 48;            // Click/touch hit area (covers body + surroundings)
-const B_SIZE = 8;            // Visual ball size
-const B_HIT = 40;            // Ball hit area (easy to tap on mobile)
+const P_SIZE = 16;
+const P_HIT = 48;
+const B_SIZE = 8;
+const B_HIT = 40;
 const ANIM_SPEED = 0.6;
+
+// Device detection
+const isMobile = window.innerWidth < 768;
+const FRAME_H = isMobile ? 400 : 600;
 
 let playersData = [];
 let ballData = { x: 0, y: 0, z: 0 };
@@ -238,9 +248,15 @@ const court = document.getElementById('court');
 const sceneEl = document.getElementById('scene');
 const viewport = document.getElementById('viewport');
 const frameInd = document.getElementById('frame-indicator');
+const debugEl = document.getElementById('debug');
 
 court.style.width = PX_W + 'px';
 court.style.height = PX_H + 'px';
+
+// Debug info
+function updateDebug() {
+  debugEl.textContent = (isMobile ? 'M' : 'D') + ' ' + window.innerWidth + 'x' + window.innerHeight + ' z:' + currentZoom.toFixed(2);
+}
 
 // ===== COURT MARKINGS =====
 function addLine(x, y, w, h) {
@@ -308,7 +324,7 @@ function setPos(el, px, py) {
   el.style.transform = 'translate3d(' + px + 'px,' + py + 'px, 0)';
 }
 
-// ===== CREATE PLAYER (soccer player silhouette) =====
+// ===== CREATE PLAYER =====
 const playerEls = [];
 
 function createPlayerEl(data) {
@@ -327,39 +343,37 @@ function createPlayerEl(data) {
   const [px, py] = gameToPixel(data.position.x, data.position.z);
   setPos(el, px - P_SIZE/2, py - P_SIZE/2);
 
-  // Expanded invisible hit area for easy clicking/touching
+  // Hit area
   const hitarea = document.createElement('div');
   hitarea.className = 'player-hitarea';
   const hitOff = (P_HIT - P_SIZE) / 2;
   hitarea.style.cssText = 'left:-'+hitOff+'px;top:-'+hitOff+'px;width:'+P_HIT+'px;height:'+P_HIT+'px;';
   el.appendChild(hitarea);
 
-  // Shadow on ground
+  // Shadow
   const shadow = document.createElement('div');
   shadow.className = 'player-shadow';
   shadow.style.cssText = 'left:-4px;top:2px;width:'+(P_SIZE+8)+'px;height:'+(P_SIZE*0.5)+'px;';
   el.appendChild(shadow);
 
-  // 3D upright body - soccer player silhouette (1:7.5 human ratio)
-  const bodyH = P_SIZE * 2.8;
+  // 3D body — moderate proportions (readable but realistic)
+  const bodyH = P_SIZE * 2.2;
   const bodyW = P_SIZE - 2;
   const body = document.createElement('div');
   body.className = 'player-body';
   body.style.cssText = 'left:1px;bottom:0;width:'+bodyW+'px;height:'+bodyH+'px;';
 
-  // Create soccer player using layered divs
-  // Head (~13% of body height for realistic proportion)
-  const headS = Math.round(bodyW * 0.42);
+  // Head
+  const headS = Math.round(bodyW * 0.45);
   const head = document.createElement('div');
   head.style.cssText = 'position:absolute;top:0;left:50%;transform:translateX(-50%);width:'+headS+'px;height:'+headS+'px;border-radius:50%;background:radial-gradient(circle at 40% 35%, #f5d0a9, #d4a574);box-shadow:0 1px 2px rgba(0,0,0,0.2);';
-  // Hair
   const hair = document.createElement('div');
   hair.style.cssText = 'position:absolute;top:-1px;left:50%;transform:translateX(-50%);width:'+(headS+1)+'px;height:'+(headS*0.5)+'px;border-radius:'+(headS)+'px '+(headS)+'px 0 0;background:#3d2b1f;';
   body.appendChild(hair);
   body.appendChild(head);
 
-  // Jersey (upper body)
-  const jerseyH = Math.round(bodyH * 0.28);
+  // Jersey
+  const jerseyH = Math.round(bodyH * 0.30);
   const jerseyTop = headS - 1;
   const jersey = document.createElement('div');
   jersey.style.cssText = 'position:absolute;top:'+jerseyTop+'px;left:0;width:100%;height:'+jerseyH+'px;'
@@ -367,7 +381,7 @@ function createPlayerEl(data) {
     + 'border-radius:3px 3px 1px 1px;box-shadow:0 1px 3px rgba(0,0,0,0.3);';
   body.appendChild(jersey);
 
-  // Arms (slightly spread, skin color)
+  // Arms
   const armW = Math.max(2, Math.round(bodyW * 0.15));
   const armH = Math.round(jerseyH * 0.85);
   const armTop = jerseyTop + 1;
@@ -379,23 +393,21 @@ function createPlayerEl(data) {
   body.appendChild(rArm);
 
   // Shorts
-  const shortsH = Math.round(bodyH * 0.12);
+  const shortsH = Math.round(bodyH * 0.14);
   const shortsTop = jerseyTop + jerseyH - 1;
   const shorts = document.createElement('div');
   shorts.style.cssText = 'position:absolute;top:'+shortsTop+'px;left:0;width:100%;height:'+shortsH+'px;background:'+shortsColor+';border-radius:0 0 2px 2px;';
   body.appendChild(shorts);
 
-  // Legs (skin + socks)
+  // Legs
   const legW = Math.max(2, Math.round(bodyW * 0.22));
-  const legH = Math.round(bodyH * 0.34);
+  const legH = Math.round(bodyH * 0.28);
   const legTop = shortsTop + shortsH - 1;
   const sockColor = isHome ? '#fff' : '#1a1a2e';
-  // Left leg
   const lLeg = document.createElement('div');
   lLeg.style.cssText = 'position:absolute;top:'+legTop+'px;left:'+Math.round(bodyW*0.15)+'px;width:'+legW+'px;height:'+legH+'px;'
     + 'background:linear-gradient(180deg, #f5d0a9 0%, #f5d0a9 30%, '+sockColor+' 30%, '+sockColor+' 100%);border-radius:1px;';
   body.appendChild(lLeg);
-  // Right leg
   const rLeg = document.createElement('div');
   rLeg.style.cssText = 'position:absolute;top:'+legTop+'px;right:'+Math.round(bodyW*0.15)+'px;width:'+legW+'px;height:'+legH+'px;'
     + 'background:linear-gradient(180deg, #f5d0a9 0%, #f5d0a9 30%, '+sockColor+' 30%, '+sockColor+' 100%);border-radius:1px;';
@@ -413,7 +425,7 @@ function createPlayerEl(data) {
 
   el.appendChild(body);
 
-  // Number (flat on ground for readability)
+  // Number
   const num = document.createElement('div');
   num.className = 'player-number';
   num.style.cssText = 'left:0;top:0;width:'+P_SIZE+'px;height:'+P_SIZE+'px;line-height:'+P_SIZE+'px;font-size:'+(P_SIZE*0.45)+'px;';
@@ -429,11 +441,7 @@ function createPlayerEl(data) {
 
   court.appendChild(el);
 
-  const pObj = {
-    el, data,
-    _px: px - P_SIZE/2,
-    _py: py - P_SIZE/2,
-  };
+  const pObj = { el, data, _px: px - P_SIZE/2, _py: py - P_SIZE/2 };
   playerEls.push(pObj);
   return pObj;
 }
@@ -453,7 +461,6 @@ ballEl.className = 'ball';
 ballEl.style.width = B_SIZE + 'px';
 ballEl.style.height = B_SIZE + 'px';
 
-// Expanded hit area for ball
 const ballHit = document.createElement('div');
 ballHit.className = 'ball-hitarea';
 const bHitOff = (B_HIT - B_SIZE) / 2;
@@ -492,10 +499,15 @@ let dragging = null;
 let didDrag = false;
 let rotX = 55, rotZ = 0, currentZoom = 1;
 
+// Responsive: fit court to viewport on mobile
+if (isMobile) {
+  currentZoom = Math.max(0.35, Math.min(0.75, (window.innerWidth - 40) / PX_W));
+}
+
 function getCourtPos(e) {
   const vRect = viewport.getBoundingClientRect();
-  const cx = e.clientX - vRect.left - vRect.width/2 - panX;
-  const cy = e.clientY - vRect.top - vRect.height/2 - panY;
+  const cx = e.clientX - vRect.left - vRect.width/2;
+  const cy = e.clientY - vRect.top - vRect.height/2;
   const cosX = Math.cos(rotX * Math.PI / 180);
   const cosZ = Math.cos(rotZ * Math.PI / 180);
   const sinZ = Math.sin(rotZ * Math.PI / 180);
@@ -506,8 +518,7 @@ function getCourtPos(e) {
 
 court.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return;
-  e.preventDefault();  // Prevent scroll on touch start
-  // Check hit areas (player-hitarea, ball-hitarea) and their parent (.player, .ball)
+  e.preventDefault();
   const target = e.target.closest('.player, .ball');
   if (!target) {
     document.querySelectorAll('.player.selected, .ball.selected').forEach(el => el.classList.remove('selected'));
@@ -524,7 +535,7 @@ court.addEventListener('pointerdown', (e) => {
 
 court.addEventListener('pointermove', (e) => {
   if (!dragging) return;
-  e.preventDefault();  // Prevent page scroll on mobile during drag
+  e.preventDefault();
   const [cpx, cpy] = getCourtPos(e);
   const [gx, gz] = pixelToGame(cpx, cpy);
   const cx = Math.max(-CW/2, Math.min(CW/2, gx));
@@ -558,19 +569,13 @@ court.addEventListener('pointerup', () => {
   didDrag = false;
 });
 
-// ===== CAMERA ROTATION =====
+// ===== CAMERA =====
 let isRotating = false;
 let rotStart = { x:0, y:0 };
-let panX = 0, panY = 0;
-
-// Responsive initial zoom: fit court to screen width
-const isMobile = window.innerWidth < 768;
-if (isMobile) {
-  currentZoom = Math.min(0.85, (window.innerWidth - 20) / PX_W * 1.2);
-}
 
 function updateSceneTransform() {
-  sceneEl.style.transform = 'translate('+panX+'px,'+panY+'px) rotateX('+rotX+'deg) rotateZ('+rotZ+'deg) scale('+currentZoom+')';
+  sceneEl.style.transform = 'rotateX('+rotX+'deg) rotateZ('+rotZ+'deg) scale('+currentZoom+')';
+  updateDebug();
 }
 updateSceneTransform();
 
@@ -594,43 +599,25 @@ viewport.addEventListener('pointermove', (e) => {
 viewport.addEventListener('pointerup', (e) => {
   if (e.button === 2) isRotating = false;
 });
-
-// Zoom toward mouse cursor position (desktop)
 viewport.addEventListener('wheel', (e) => {
   e.preventDefault();
-  const vRect = viewport.getBoundingClientRect();
-  const mx = e.clientX - vRect.left - vRect.width/2;
-  const my = e.clientY - vRect.top - vRect.height/2;
-  const oldZoom = currentZoom;
-  currentZoom = Math.max(0.4, Math.min(2.5, currentZoom - e.deltaY * 0.001));
-  // Adjust pan so the point under cursor stays fixed
-  panX = mx - (mx - panX) * currentZoom / oldZoom;
-  panY = my - (my - panY) * currentZoom / oldZoom;
+  currentZoom = Math.max(0.3, Math.min(2.5, currentZoom - e.deltaY * 0.001));
   updateSceneTransform();
 }, { passive: false });
 
-// ===== PINCH TO ZOOM (mobile) — zoom toward pinch center =====
+// ===== PINCH TO ZOOM (mobile) =====
 let pinchStartDist = 0;
 let pinchStartZoom = 1;
-let pinchStartPan = { x:0, y:0 };
-let pinchMid = { x:0, y:0 };
 
 viewport.addEventListener('touchstart', (e) => {
   if (e.touches.length === 2) {
     e.preventDefault();
-    // Cancel any ongoing drag
     dragging = null;
     didDrag = false;
     const dx = e.touches[0].clientX - e.touches[1].clientX;
     const dy = e.touches[0].clientY - e.touches[1].clientY;
     pinchStartDist = Math.sqrt(dx * dx + dy * dy);
     pinchStartZoom = currentZoom;
-    pinchStartPan = { x: panX, y: panY };
-    const vRect = viewport.getBoundingClientRect();
-    pinchMid = {
-      x: (e.touches[0].clientX + e.touches[1].clientX) / 2 - vRect.left - vRect.width/2,
-      y: (e.touches[0].clientY + e.touches[1].clientY) / 2 - vRect.top - vRect.height/2,
-    };
   }
 }, { passive: false });
 
@@ -640,11 +627,7 @@ viewport.addEventListener('touchmove', (e) => {
     const dx = e.touches[0].clientX - e.touches[1].clientX;
     const dy = e.touches[0].clientY - e.touches[1].clientY;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    const newZoom = Math.max(0.4, Math.min(2.5, pinchStartZoom * (dist / pinchStartDist)));
-    // Pan so the pinch midpoint stays fixed on the same scene point
-    panX = pinchMid.x - (pinchMid.x - pinchStartPan.x) * newZoom / pinchStartZoom;
-    panY = pinchMid.y - (pinchMid.y - pinchStartPan.y) * newZoom / pinchStartZoom;
-    currentZoom = newZoom;
+    currentZoom = Math.max(0.3, Math.min(2.5, pinchStartZoom * (dist / pinchStartDist)));
     updateSceneTransform();
   }
 }, { passive: false });
@@ -679,7 +662,6 @@ function animLoop(ts) {
         if (pObj) updatePlayerEl(pObj, fp.position.x, fp.position.z);
       });
       updateBallTransform(ff.ball_position.x, ff.ball_position.z);
-      // Reset ball visual
       ballSphere.style.transform = 'rotateX(-90deg)';
       ballShadow.style.opacity = '1';
       ballShadow.style.transform = 'scale(1)';
@@ -697,7 +679,6 @@ function animLoop(ts) {
   const to = framesData[animPhase + 1];
   const t = easeInOut(animProgress);
 
-  // Players
   from.players.forEach((fp, i) => {
     const tp = to.players[i];
     if (!tp) return;
@@ -706,34 +687,27 @@ function animLoop(ts) {
     updatePlayerEl(pObj, lerp(fp.position.x, tp.position.x, t), lerp(fp.position.z, tp.position.z, t));
   });
 
-  // Ball position
   const fb = from.ball_position;
   const tb = to.ball_position;
   ballData.x = lerp(fb.x, tb.x, t);
   ballData.z = lerp(fb.z, tb.z, t);
   updateBallTransform(ballData.x, ballData.z);
 
-  // Ball height (realistic 1:1 scale with court)
-  // 1m height = SCALE pixels (18px) on screen
   const trajectory = to.ball_trajectory || "linear";
   const peakHeight = to.ball_peak_height || 0;
   let ballH = 0;
 
   if (trajectory === "parabolic" && peakHeight > 0) {
-    // Parabola: peaks at t=0.5
     ballH = 4 * peakHeight * animProgress * (1 - animProgress);
   } else {
     ballH = lerp(fb.y || 0, tb.y || 0, t);
   }
 
-  // 1 meter = SCALE pixels (1:1 ratio with court)
   const hPx = ballH * SCALE;
   if (hPx > 1) {
     ballSphere.style.transform = 'rotateX(-90deg) translateY(-' + hPx + 'px)';
-    // More dramatic shadow: shrinks and fades faster with height
     ballShadow.style.opacity = Math.max(0.05, 1 - ballH * 0.15).toFixed(2);
     ballShadow.style.transform = 'scale(' + Math.max(0.15, 1 - ballH * 0.08).toFixed(2) + ')';
-    // Show dotted height line from ground to ball
     ballHeightLine.style.height = hPx + 'px';
     ballHeightLine.style.opacity = '1';
   } else {
@@ -776,13 +750,13 @@ function onRender(args) {
     requestAnimationFrame(animLoop);
   }
 
-  setFrameHeight(isMobile ? 400 : 600);
+  setFrameHeight(FRAME_H);
 }
 
-// Set info text based on device
+// Info text
 document.getElementById('info').textContent = isMobile
   ? '드래그: 이동 | 두 손가락: 줌'
-  : '드래그: 선수/공 이동 | 우클릭 드래그: 회전 | 스크롤: 줌';
+  : '드래그: 선수/공 이동 | 우클릭: 회전 | 스크롤: 줌';
 
 window.addEventListener("message", (event) => {
   if (event.data.type === "streamlit:render") {
