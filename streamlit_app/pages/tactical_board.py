@@ -43,18 +43,18 @@ def render_tactical_board_page():
             )
             current_phase.frames.insert(frame_idx + 1, new_frame)
             st.session_state.current_frame_idx = frame_idx + 1
-            # Clear selectbox cached state to match new index
-            if "tb_frame_sel" in st.session_state:
-                del st.session_state["tb_frame_sel"]
+            # Force selectbox to match new frame index
+            st.session_state["tb_frame_sel"] = frame_idx + 1
             st.rerun()
 
     with frame_col2:
         if len(current_phase.frames) > 1:
             if st.button("- 프레임 삭제", key="tb_del_frame"):
                 current_phase.frames.pop(frame_idx)
-                st.session_state.current_frame_idx = min(frame_idx, len(current_phase.frames) - 1)
-                if "tb_frame_sel" in st.session_state:
-                    del st.session_state["tb_frame_sel"]
+                new_idx = min(frame_idx, len(current_phase.frames) - 1)
+                st.session_state.current_frame_idx = new_idx
+                # Force selectbox to match new frame index
+                st.session_state["tb_frame_sel"] = new_idx
                 st.rerun()
 
     with frame_col3:
