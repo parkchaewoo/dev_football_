@@ -851,12 +851,16 @@ function onRender(args) {
     ballGroup.position.set(newBall.x, 0, newBall.z);
   }
 
-  framesData = newFrames;
+  // Only update framesData when starting new playback or when not animating.
+  // Otherwise a Streamlit re-render sends frames=[] which kills the animation.
   if (shouldPlay && newFrames.length > 1) {
+    framesData = newFrames;
     animPhase = 0;
     animProgress = 0;
     lastAnimTime = 0;
     isPlaying = true;
+  } else if (!isPlaying) {
+    framesData = newFrames;
   }
 
   setFrameHeight(FRAME_H);

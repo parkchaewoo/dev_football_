@@ -155,34 +155,39 @@ def render_tactical_board_page():
         key="tb_board",
     )
 
-    # Apply drag/animation-end positions to session state
+    # Apply drag/animation-end positions to session state.
+    # Only rerun if positions actually changed (drag_result persists in
+    # Streamlit session state, so we must avoid infinite rerun loops).
     if drag_result:
-        # If animation just finished, apply final positions to the LAST frame
-        # and move the view to that frame so positions don't snap back
+        changed = False
+        target_frame = current_frame
+
         if is_playing:
+            # Animation just finished → apply to LAST frame
             last_idx = len(current_phase.frames) - 1
-            last_frame = current_phase.frames[last_idx]
-            for dp in drag_result.get("players", []):
-                for p in last_frame.players:
-                    if p.id == dp["id"]:
+            target_frame = current_phase.frames[last_idx]
+            if st.session_state.current_frame_idx != last_idx:
+                st.session_state.current_frame_idx = last_idx
+                changed = True
+
+        for dp in drag_result.get("players", []):
+            for p in target_frame.players:
+                if p.id == dp["id"]:
+                    if abs(p.position.x - dp["x"]) > 0.001 or abs(p.position.z - dp["z"]) > 0.001:
                         p.position.x = dp["x"]
                         p.position.z = dp["z"]
-            ball = drag_result.get("ball")
-            if ball:
-                last_frame.ball_position.x = ball["x"]
-                last_frame.ball_position.z = ball["z"]
-            st.session_state.current_frame_idx = last_idx
-        else:
-            for dp in drag_result.get("players", []):
-                for p in current_frame.players:
-                    if p.id == dp["id"]:
-                        p.position.x = dp["x"]
-                        p.position.z = dp["z"]
-            ball = drag_result.get("ball")
-            if ball:
-                current_frame.ball_position.x = ball["x"]
-                current_frame.ball_position.z = ball["z"]
-        st.rerun()
+                        changed = True
+
+        ball = drag_result.get("ball")
+        if ball:
+            if (abs(target_frame.ball_position.x - ball["x"]) > 0.001 or
+                    abs(target_frame.ball_position.z - ball["z"]) > 0.001):
+                target_frame.ball_position.x = ball["x"]
+                target_frame.ball_position.z = ball["z"]
+                changed = True
+
+        if changed:
+            st.rerun()
 
     # Info
     st.caption(
