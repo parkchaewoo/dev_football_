@@ -223,6 +223,9 @@ function signalReady() {
   sendMessageToStreamlit("streamlit:componentReady", { apiVersion: 1 });
 }
 
+// ===== VERSION =====
+const BOARD_VERSION = 'v3';
+
 // ===== CONFIG =====
 const CW = 40, CH = 20;
 const SCALE = 18;
@@ -255,7 +258,7 @@ court.style.height = PX_H + 'px';
 
 // Debug info
 function updateDebug() {
-  debugEl.textContent = (isMobile ? 'M' : 'D') + ' ' + window.innerWidth + 'x' + window.innerHeight + ' z:' + currentZoom.toFixed(2) + ' p:' + Math.round(panX) + ',' + Math.round(panY);
+  debugEl.textContent = BOARD_VERSION + ' ' + (isMobile ? 'M' : 'D') + ' ' + window.innerWidth + 'x' + window.innerHeight + ' z:' + currentZoom.toFixed(2) + ' p:' + Math.round(panX) + ',' + Math.round(panY);
 }
 
 // ===== COURT MARKINGS =====
@@ -591,9 +594,10 @@ let rotStart = { x:0, y:0 };
 
 function updateSceneTransform() {
   sceneEl.style.transform = 'translate('+panX+'px,'+panY+'px) rotateX('+rotX+'deg) rotateZ('+rotZ+'deg) scale('+currentZoom+')';
-  // Dynamically scale player body height based on camera angle
-  // At rotX=20 (horizontal) → 0.3, rotX=55 (default) → 0.9, rotX=60+ → 1.0
-  const bodyScale = Math.max(0.3, Math.min(1.0, (rotX - 10) / 50));
+  // Scale player body proportionally to court foreshortening
+  // sin(rotX) matches how the court visually compresses at lower angles
+  // Normalized to sin(55°)=0.82 so default view = scale 1.0
+  const bodyScale = Math.max(0.25, Math.min(1.0, Math.sin(rotX * Math.PI / 180) / 0.82));
   court.style.setProperty('--body-scale', bodyScale.toFixed(3));
   updateDebug();
 }
@@ -664,8 +668,14 @@ viewport.addEventListener('touchmove', (e) => {
     const dist = Math.sqrt(dx * dx + dy * dy);
     const newZoom = Math.max(0.3, Math.min(2.5, pinchStartZoom * (dist / pinchStartDist)));
     const ratio = newZoom / pinchStartZoom;
-    panX = pinchMid.x - (pinchMid.x - pinchStartPan.x) * ratio;
-    panY = pinchMid.y - (pinchMid.y - pinchStartPan.y) * ratio;
+    // Track midpoint movement for two-finger pan
+    const vRect = viewport.getBoundingClientRect();
+    const curMidX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - vRect.left - vRect.width/2;
+    const curMidY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - vRect.top - vRect.height/2;
+    const panDeltaX = curMidX - pinchMid.x;
+    const panDeltaY = curMidY - pinchMid.y;
+    panX = pinchMid.x - (pinchMid.x - pinchStartPan.x) * ratio + panDeltaX;
+    panY = pinchMid.y - (pinchMid.y - pinchStartPan.y) * ratio + panDeltaY;
     currentZoom = newZoom;
     updateSceneTransform();
   }
