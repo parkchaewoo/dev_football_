@@ -152,7 +152,7 @@ def render_tactical_board_page():
         ball_position=current_frame.ball_position,
         frames=frames_for_js,
         is_playing=is_playing,
-        key=f"tb_board_{frame_idx}",
+        key="tb_board",
     )
 
     # Apply drag/animation-end positions to session state
