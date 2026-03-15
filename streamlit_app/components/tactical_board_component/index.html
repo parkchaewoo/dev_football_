@@ -719,6 +719,17 @@ function updateAnimation(ts) {
       isPlaying = false;
       frameInd.textContent = 'Complete';
       setTimeout(() => frameInd.classList.remove('visible'), 1500);
+
+      // Send final positions to Python so state stays in sync
+      const finalPositions = playerObjects.map(p => ({
+        id: p.data.id,
+        x: Math.round(p.data.position.x * 100) / 100,
+        z: Math.round(p.data.position.z * 100) / 100,
+      }));
+      setComponentValue({
+        players: finalPositions,
+        ball: { x: Math.round(ballData.x * 100) / 100, z: Math.round(ballData.z * 100) / 100 },
+      });
       return;
     }
   }
@@ -820,12 +831,15 @@ function onRender(args) {
   const newFrames = args.frames || [];
   const shouldPlay = args.is_playing || false;
 
-  ballData = newBall;
-
-  // Create players once, then update positions
+  // Create players if first time
   if (playerObjects.length === 0 && newPlayers.length > 0) {
     newPlayers.forEach(p => createPlayer(p));
-  } else {
+    ballData = newBall;
+    ballGroup.position.set(newBall.x, 0, newBall.z);
+  } else if (!isPlaying) {
+    // Only update positions when NOT animating —
+    // otherwise Streamlit re-render overwrites animation state
+    ballData = newBall;
     newPlayers.forEach(pd => {
       const pObj = playerObjects.find(p => p.data.id === pd.id);
       if (pObj) {
@@ -834,9 +848,8 @@ function onRender(args) {
         pObj.data.position.z = pd.position.z;
       }
     });
+    ballGroup.position.set(newBall.x, 0, newBall.z);
   }
-
-  ballGroup.position.set(newBall.x, 0, newBall.z);
 
   framesData = newFrames;
   if (shouldPlay && newFrames.length > 1) {

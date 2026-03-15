@@ -155,17 +155,33 @@ def render_tactical_board_page():
         key=f"tb_board_{frame_idx}",
     )
 
-    # Apply drag positions to session state
+    # Apply drag/animation-end positions to session state
     if drag_result:
-        for dp in drag_result.get("players", []):
-            for p in current_frame.players:
-                if p.id == dp["id"]:
-                    p.position.x = dp["x"]
-                    p.position.z = dp["z"]
-        ball = drag_result.get("ball")
-        if ball:
-            current_frame.ball_position.x = ball["x"]
-            current_frame.ball_position.z = ball["z"]
+        # If animation just finished, apply final positions to the LAST frame
+        # and move the view to that frame so positions don't snap back
+        if is_playing:
+            last_idx = len(current_phase.frames) - 1
+            last_frame = current_phase.frames[last_idx]
+            for dp in drag_result.get("players", []):
+                for p in last_frame.players:
+                    if p.id == dp["id"]:
+                        p.position.x = dp["x"]
+                        p.position.z = dp["z"]
+            ball = drag_result.get("ball")
+            if ball:
+                last_frame.ball_position.x = ball["x"]
+                last_frame.ball_position.z = ball["z"]
+            st.session_state.current_frame_idx = last_idx
+        else:
+            for dp in drag_result.get("players", []):
+                for p in current_frame.players:
+                    if p.id == dp["id"]:
+                        p.position.x = dp["x"]
+                        p.position.z = dp["z"]
+            ball = drag_result.get("ball")
+            if ball:
+                current_frame.ball_position.x = ball["x"]
+                current_frame.ball_position.z = ball["z"]
         st.rerun()
 
     # Info
