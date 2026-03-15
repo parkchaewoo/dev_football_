@@ -474,11 +474,11 @@ function createBall() {
   ballHeightLine.computeLineDistances();
   ballGroup.add(ballHeightLine);
 
-  // Hitbox
-  const hGeo = new THREE.SphereGeometry(0.6, 8, 8);
+  // Hitbox (same size as player hitbox for easy selection)
+  const hGeo = new THREE.CylinderGeometry(0.5, 0.5, 2, 8);
   const hMat = new THREE.MeshBasicMaterial({ visible: false });
   const hitbox = new THREE.Mesh(hGeo, hMat);
-  hitbox.position.y = 0.22;
+  hitbox.position.y = 1;
   ballGroup.add(hitbox);
 
   scene.add(ballGroup);
@@ -538,6 +538,9 @@ let lastTapTime = 0;
 let pendingDragEvent = null;
 let dragRAF = null;
 
+// CRITICAL: Use capture phase + stopImmediatePropagation to intercept events
+// BEFORE OrbitControls processes them. This prevents camera movement when
+// the user intends to drag a player or ball.
 renderer.domElement.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return;
 
@@ -548,14 +551,20 @@ renderer.domElement.addEventListener('pointerdown', (e) => {
     if (now - lastTapTime < 300) {
       toggleCameraView();
       lastTapTime = 0;
+      e.stopImmediatePropagation(); // prevent OrbitControls
       return;
     }
     lastTapTime = now;
     selectObject(null);
+    // Let OrbitControls handle camera rotation on empty area
     return;
   }
 
+  // Hit a player or ball → block OrbitControls completely
+  e.stopImmediatePropagation();
+  e.preventDefault();
   lastTapTime = 0;
+
   if (hit.userData.type === 'player') {
     dragging = { type: 'player', id: hit.userData.id };
     selectObject(hit.userData.id);
@@ -565,7 +574,7 @@ renderer.domElement.addEventListener('pointerdown', (e) => {
   }
   controls.enabled = false;
   didDrag = false;
-});
+}, { capture: true });
 
 function processDrag(e) {
   const pt = getGroundPoint(e);
@@ -589,6 +598,8 @@ function processDrag(e) {
 
 renderer.domElement.addEventListener('pointermove', (e) => {
   if (!dragging) return;
+  // Block OrbitControls while dragging
+  e.stopImmediatePropagation();
   e.preventDefault();
   pendingDragEvent = e;
   if (!dragRAF) {
@@ -598,12 +609,15 @@ renderer.domElement.addEventListener('pointermove', (e) => {
       dragRAF = null;
     });
   }
-});
+}, { capture: true });
 
-renderer.domElement.addEventListener('pointerup', () => {
+renderer.domElement.addEventListener('pointerup', (e) => {
+  if (!dragging) return;
+  // Block OrbitControls for this event
+  e.stopImmediatePropagation();
   if (dragRAF) { cancelAnimationFrame(dragRAF); dragRAF = null; }
   pendingDragEvent = null;
-  if (dragging && didDrag) {
+  if (didDrag) {
     const positions = playerObjects.map(p => ({
       id: p.data.id,
       x: Math.round(p.data.position.x * 100) / 100,
@@ -617,19 +631,30 @@ renderer.domElement.addEventListener('pointerup', () => {
   dragging = null;
   didDrag = false;
   controls.enabled = true;
-});
+}, { capture: true });
 
 // ===== CAMERA TOGGLE 2D ↔ 3D =====
 let isTopDown = true;
 let cameraAnim = null;
+let saved3DPos = null; // remember user's last 3D camera angle
 
 const CAM_TOPDOWN = { x: 0, y: 38, z: 0.01 };
-const CAM_3D = { x: 0, y: 22, z: 22 };
+const CAM_3D_DEFAULT = { x: 0, y: 22, z: 22 };
+
+// Save camera position whenever user manually rotates/zooms
+controls.addEventListener('end', () => {
+  const p = camera.position;
+  // If camera is not near top-down, save as 3D position
+  if (p.y < 35) {
+    saved3DPos = { x: p.x, y: p.y, z: p.z };
+    isTopDown = false;
+  }
+});
 
 function toggleCameraView() {
   if (cameraAnim) return;
   const from = { x: camera.position.x, y: camera.position.y, z: camera.position.z };
-  const to = isTopDown ? CAM_3D : CAM_TOPDOWN;
+  const to = isTopDown ? (saved3DPos || CAM_3D_DEFAULT) : CAM_TOPDOWN;
   isTopDown = !isTopDown;
   cameraAnim = { from, to, start: performance.now(), dur: 500 };
 }
