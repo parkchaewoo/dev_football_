@@ -65,7 +65,7 @@
   .goal-bar {
     position:absolute;
     background: linear-gradient(180deg, #ccc, #fff, #ccc);
-    transform-origin: bottom center;
+    transform-origin: top center;
     transform: rotateX(-90deg);
     border-radius: 2px;
   }
@@ -96,7 +96,7 @@
   .player-body {
     position:absolute;
     transform-origin: bottom center;
-    transform: rotateX(-90deg);
+    transform: rotateX(-90deg) scaleY(var(--body-scale, 1));
     transform-style: preserve-3d;
     cursor: grab;
   }
@@ -255,7 +255,7 @@ court.style.height = PX_H + 'px';
 
 // Debug info
 function updateDebug() {
-  debugEl.textContent = (isMobile ? 'M' : 'D') + ' ' + window.innerWidth + 'x' + window.innerHeight + ' z:' + currentZoom.toFixed(2);
+  debugEl.textContent = (isMobile ? 'M' : 'D') + ' ' + window.innerWidth + 'x' + window.innerHeight + ' z:' + currentZoom.toFixed(2) + ' p:' + Math.round(panX) + ',' + Math.round(panY);
 }
 
 // ===== COURT MARKINGS =====
@@ -306,7 +306,7 @@ function addGoal(side) {
   g.appendChild(rp);
   const bar = document.createElement('div');
   bar.className = 'goal-bar';
-  bar.style.cssText = 'left:'+postX+'px;top:0;width:4px;height:'+gW+'px;transform:rotateX(-90deg) translateZ(-'+(GOAL_H_PX-2)+'px);';
+  bar.style.cssText = 'left:'+postX+'px;top:0;width:4px;height:'+gW+'px;transform-origin:top center;transform:rotateX(-90deg);';
   g.appendChild(bar);
   court.appendChild(g);
 }
@@ -497,7 +497,10 @@ court.appendChild(ballEl);
 // ===== DRAG SYSTEM =====
 let dragging = null;
 let didDrag = false;
+let dragRAF = null;
+let pendingDragEvent = null;
 let rotX = 55, rotZ = 0, currentZoom = 1;
+let panX = 0, panY = 0;
 
 // Responsive: fit court to viewport on mobile
 if (isMobile) {
@@ -506,8 +509,8 @@ if (isMobile) {
 
 function getCourtPos(e) {
   const vRect = viewport.getBoundingClientRect();
-  const cx = e.clientX - vRect.left - vRect.width/2;
-  const cy = e.clientY - vRect.top - vRect.height/2;
+  const cx = e.clientX - vRect.left - vRect.width/2 - panX;
+  const cy = e.clientY - vRect.top - vRect.height/2 - panY;
   const cosX = Math.cos(rotX * Math.PI / 180);
   const cosZ = Math.cos(rotZ * Math.PI / 180);
   const sinZ = Math.sin(rotZ * Math.PI / 180);
@@ -533,9 +536,7 @@ court.addEventListener('pointerdown', (e) => {
   court.setPointerCapture(e.pointerId);
 });
 
-court.addEventListener('pointermove', (e) => {
-  if (!dragging) return;
-  e.preventDefault();
+function processDrag(e) {
   const [cpx, cpy] = getCourtPos(e);
   const [gx, gz] = pixelToGame(cpx, cpy);
   const cx = Math.max(-CW/2, Math.min(CW/2, gx));
@@ -550,9 +551,24 @@ court.addEventListener('pointermove', (e) => {
     updateBallTransform(cx, cz);
   }
   didDrag = true;
+}
+
+court.addEventListener('pointermove', (e) => {
+  if (!dragging) return;
+  e.preventDefault();
+  pendingDragEvent = e;
+  if (!dragRAF) {
+    dragRAF = requestAnimationFrame(() => {
+      if (pendingDragEvent && dragging) processDrag(pendingDragEvent);
+      pendingDragEvent = null;
+      dragRAF = null;
+    });
+  }
 });
 
 court.addEventListener('pointerup', () => {
+  if (dragRAF) { cancelAnimationFrame(dragRAF); dragRAF = null; }
+  pendingDragEvent = null;
   if (dragging && didDrag) {
     const positions = playerEls.map(p => ({
       id: p.data.id,
@@ -574,7 +590,11 @@ let isRotating = false;
 let rotStart = { x:0, y:0 };
 
 function updateSceneTransform() {
-  sceneEl.style.transform = 'rotateX('+rotX+'deg) rotateZ('+rotZ+'deg) scale('+currentZoom+')';
+  sceneEl.style.transform = 'translate('+panX+'px,'+panY+'px) rotateX('+rotX+'deg) rotateZ('+rotZ+'deg) scale('+currentZoom+')';
+  // Dynamically scale player body height based on camera angle
+  // At rotX=20 (horizontal) → 0.3, rotX=55 (default) → 0.9, rotX=60+ → 1.0
+  const bodyScale = Math.max(0.3, Math.min(1.0, (rotX - 10) / 50));
+  court.style.setProperty('--body-scale', bodyScale.toFixed(3));
   updateDebug();
 }
 updateSceneTransform();
@@ -601,13 +621,22 @@ viewport.addEventListener('pointerup', (e) => {
 });
 viewport.addEventListener('wheel', (e) => {
   e.preventDefault();
+  const vRect = viewport.getBoundingClientRect();
+  const mx = e.clientX - vRect.left - vRect.width/2;
+  const my = e.clientY - vRect.top - vRect.height/2;
+  const oldZoom = currentZoom;
   currentZoom = Math.max(0.3, Math.min(2.5, currentZoom - e.deltaY * 0.001));
+  const ratio = currentZoom / oldZoom;
+  panX = mx - (mx - panX) * ratio;
+  panY = my - (my - panY) * ratio;
   updateSceneTransform();
 }, { passive: false });
 
-// ===== PINCH TO ZOOM (mobile) =====
+// ===== PINCH TO ZOOM (mobile) — zoom toward pinch center =====
 let pinchStartDist = 0;
 let pinchStartZoom = 1;
+let pinchStartPan = { x: 0, y: 0 };
+let pinchMid = { x: 0, y: 0 };
 
 viewport.addEventListener('touchstart', (e) => {
   if (e.touches.length === 2) {
@@ -618,6 +647,12 @@ viewport.addEventListener('touchstart', (e) => {
     const dy = e.touches[0].clientY - e.touches[1].clientY;
     pinchStartDist = Math.sqrt(dx * dx + dy * dy);
     pinchStartZoom = currentZoom;
+    pinchStartPan = { x: panX, y: panY };
+    const vRect = viewport.getBoundingClientRect();
+    pinchMid = {
+      x: (e.touches[0].clientX + e.touches[1].clientX) / 2 - vRect.left - vRect.width/2,
+      y: (e.touches[0].clientY + e.touches[1].clientY) / 2 - vRect.top - vRect.height/2,
+    };
   }
 }, { passive: false });
 
@@ -627,7 +662,11 @@ viewport.addEventListener('touchmove', (e) => {
     const dx = e.touches[0].clientX - e.touches[1].clientX;
     const dy = e.touches[0].clientY - e.touches[1].clientY;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    currentZoom = Math.max(0.3, Math.min(2.5, pinchStartZoom * (dist / pinchStartDist)));
+    const newZoom = Math.max(0.3, Math.min(2.5, pinchStartZoom * (dist / pinchStartDist)));
+    const ratio = newZoom / pinchStartZoom;
+    panX = pinchMid.x - (pinchMid.x - pinchStartPan.x) * ratio;
+    panY = pinchMid.y - (pinchMid.y - pinchStartPan.y) * ratio;
+    currentZoom = newZoom;
     updateSceneTransform();
   }
 }, { passive: false });

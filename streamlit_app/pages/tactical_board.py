@@ -43,8 +43,6 @@ def render_tactical_board_page():
             )
             current_phase.frames.insert(frame_idx + 1, new_frame)
             st.session_state.current_frame_idx = frame_idx + 1
-            # Delete selectbox key so it recreates cleanly with new options
-            st.session_state.pop("tb_frame_sel", None)
             st.rerun()
 
     with frame_col2:
@@ -53,7 +51,6 @@ def render_tactical_board_page():
                 current_phase.frames.pop(frame_idx)
                 new_idx = min(frame_idx, len(current_phase.frames) - 1)
                 st.session_state.current_frame_idx = new_idx
-                st.session_state.pop("tb_frame_sel", None)
                 st.rerun()
 
     with frame_col3:
@@ -62,7 +59,7 @@ def render_tactical_board_page():
             "프레임", frame_options,
             index=frame_idx,
             label_visibility="collapsed",
-            key="tb_frame_sel",
+            key=f"tb_frame_sel_{len(current_phase.frames)}",
         )
         sel_idx = frame_options.index(sel_frame) if sel_frame in frame_options else 0
         if sel_idx != frame_idx:
