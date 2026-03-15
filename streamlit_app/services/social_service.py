@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from services.firebase_init import get_firestore_client
 from services.strategy_service import increment_likes
 import time

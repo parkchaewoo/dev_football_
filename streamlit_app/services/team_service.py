@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from services.firebase_init import get_firestore_client
 import time
 import random

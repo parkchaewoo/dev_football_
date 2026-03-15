@@ -1,4 +1,6 @@
 """팀 게시판 서비스 - Firestore CRUD + 로컬 모드 지원."""
+from __future__ import annotations
+
 from services.firebase_init import get_firestore_client
 import time
 import hashlib
