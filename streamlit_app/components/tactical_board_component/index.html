@@ -574,6 +574,8 @@ renderer.domElement.addEventListener('pointerdown', (e) => {
   }
   controls.enabled = false;
   didDrag = false;
+  // Capture pointer so pointerup fires even if released outside canvas
+  renderer.domElement.setPointerCapture(e.pointerId);
 }, { capture: true });
 
 function processDrag(e) {
@@ -612,7 +614,11 @@ renderer.domElement.addEventListener('pointermove', (e) => {
 }, { capture: true });
 
 renderer.domElement.addEventListener('pointerup', (e) => {
-  if (!dragging) return;
+  if (!dragging) {
+    // Safety: always ensure controls are re-enabled
+    controls.enabled = true;
+    return;
+  }
   // Block OrbitControls for this event
   e.stopImmediatePropagation();
   if (dragRAF) { cancelAnimationFrame(dragRAF); dragRAF = null; }
@@ -632,6 +638,20 @@ renderer.domElement.addEventListener('pointerup', (e) => {
   didDrag = false;
   controls.enabled = true;
 }, { capture: true });
+
+// Fallback: if pointer capture is lost unexpectedly, re-enable controls
+renderer.domElement.addEventListener('lostpointercapture', () => {
+  if (dragging) {
+    dragging = null;
+    didDrag = false;
+    controls.enabled = true;
+  }
+});
+
+// Prevent iframe/page scroll to ensure zoom works inside Streamlit iframe
+renderer.domElement.addEventListener('wheel', (e) => {
+  e.preventDefault();
+}, { passive: false });
 
 // ===== CAMERA TOGGLE 2D ↔ 3D =====
 let isTopDown = true;

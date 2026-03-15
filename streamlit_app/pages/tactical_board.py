@@ -156,22 +156,14 @@ def render_tactical_board_page():
     )
 
     # Apply drag/animation-end positions to session state.
-    # Only rerun if positions actually changed (drag_result persists in
-    # Streamlit session state, so we must avoid infinite rerun loops).
-    if drag_result:
+    # Skip during playback — the cached drag_result from a previous drag
+    # must not interfere. The animation sends its own result when it ends.
+    # Only rerun if positions actually changed to avoid infinite loops.
+    if drag_result and not is_playing:
         changed = False
-        target_frame = current_frame
-
-        if is_playing:
-            # Animation just finished → apply to LAST frame
-            last_idx = len(current_phase.frames) - 1
-            target_frame = current_phase.frames[last_idx]
-            if st.session_state.current_frame_idx != last_idx:
-                st.session_state.current_frame_idx = last_idx
-                changed = True
 
         for dp in drag_result.get("players", []):
-            for p in target_frame.players:
+            for p in current_frame.players:
                 if p.id == dp["id"]:
                     if abs(p.position.x - dp["x"]) > 0.001 or abs(p.position.z - dp["z"]) > 0.001:
                         p.position.x = dp["x"]
@@ -180,10 +172,10 @@ def render_tactical_board_page():
 
         ball = drag_result.get("ball")
         if ball:
-            if (abs(target_frame.ball_position.x - ball["x"]) > 0.001 or
-                    abs(target_frame.ball_position.z - ball["z"]) > 0.001):
-                target_frame.ball_position.x = ball["x"]
-                target_frame.ball_position.z = ball["z"]
+            if (abs(current_frame.ball_position.x - ball["x"]) > 0.001 or
+                    abs(current_frame.ball_position.z - ball["z"]) > 0.001):
+                current_frame.ball_position.x = ball["x"]
+                current_frame.ball_position.z = ball["z"]
                 changed = True
 
         if changed:
