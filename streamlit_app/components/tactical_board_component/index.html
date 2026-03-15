@@ -17,10 +17,21 @@
   }
   #court {
     position:relative;
-    background: linear-gradient(180deg, #2d8a4e 0%, #258844 50%, #2d8a4e 100%);
-    border: 2px solid rgba(255,255,255,0.8);
+    background:
+      repeating-linear-gradient(
+        0deg,
+        rgba(255,255,255,0.02) 0px, rgba(255,255,255,0.02) 1px,
+        transparent 1px, transparent 3px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        rgba(0,0,0,0.015) 0px, transparent 30px,
+        rgba(0,0,0,0.015) 60px
+      ),
+      linear-gradient(180deg, #2d8a4e 0%, #258844 50%, #2d8a4e 100%);
+    border: 2px solid rgba(255,255,255,0.6);
     border-radius: 4px;
-    box-shadow: 0 0 60px rgba(0,0,0,0.5), 0 20px 40px rgba(0,0,0,0.3);
+    box-shadow: 0 0 40px rgba(0,0,0,0.4), 0 10px 30px rgba(0,0,0,0.2);
     transform-style: preserve-3d;
   }
   #court::before {
@@ -28,8 +39,8 @@
     position:absolute; top:0; left:0; right:0; bottom:0;
     background: repeating-linear-gradient(
       90deg,
-      transparent 0px, transparent 40px,
-      rgba(255,255,255,0.025) 40px, rgba(255,255,255,0.025) 80px
+      transparent 0px, transparent 36px,
+      rgba(255,255,255,0.018) 36px, rgba(255,255,255,0.018) 72px
     );
     pointer-events:none;
     border-radius:4px;
@@ -90,8 +101,10 @@
   .player-shadow {
     position:absolute;
     border-radius:50%;
-    background: radial-gradient(ellipse, rgba(0,0,0,0.4) 0%, transparent 70%);
+    background: radial-gradient(ellipse, rgba(0,0,0,0.35) 0%, transparent 70%);
     pointer-events:none;
+    transform: translateY(var(--shadow-y, 2px)) scaleX(var(--shadow-scale, 1));
+    transition: transform 0.1s;
   }
   .player-body {
     position:absolute;
@@ -224,7 +237,7 @@ function signalReady() {
 }
 
 // ===== VERSION =====
-const BOARD_VERSION = 'v3';
+const BOARD_VERSION = 'v4';
 
 // ===== CONFIG =====
 const CW = 40, CH = 20;
@@ -332,9 +345,23 @@ const playerEls = [];
 
 function createPlayerEl(data) {
   const isHome = data.team === 'home';
-  const jerseyColor = isHome ? '#e53e3e' : '#3b82f6';
-  const jerseyDark = isHome ? '#c53030' : '#2563eb';
-  const shortsColor = isHome ? '#1a1a2e' : '#f0f0f0';
+  const isGK = data.number === 1;
+
+  // GK: yellow(home) / green(away), Field: red(home) / blue(away)
+  let jerseyColor, jerseyDark, shortsColor, sockColor, gloveColor;
+  if (isGK) {
+    jerseyColor = isHome ? '#f59e0b' : '#10b981';
+    jerseyDark  = isHome ? '#d97706' : '#059669';
+    shortsColor = '#1a1a2e';
+    sockColor   = isHome ? '#f59e0b' : '#10b981';
+    gloveColor  = isHome ? '#f59e0b' : '#10b981';
+  } else {
+    jerseyColor = isHome ? '#e53e3e' : '#3b82f6';
+    jerseyDark  = isHome ? '#c53030' : '#2563eb';
+    shortsColor = isHome ? '#1a1a2e' : '#f0f0f0';
+    sockColor   = isHome ? '#fff' : '#1a1a2e';
+    gloveColor  = '#f5d0a9';
+  }
 
   const el = document.createElement('div');
   el.className = 'player';
@@ -356,10 +383,10 @@ function createPlayerEl(data) {
   // Shadow
   const shadow = document.createElement('div');
   shadow.className = 'player-shadow';
-  shadow.style.cssText = 'left:-4px;top:2px;width:'+(P_SIZE+8)+'px;height:'+(P_SIZE*0.5)+'px;';
+  shadow.style.cssText = 'left:-4px;width:'+(P_SIZE+8)+'px;height:'+(P_SIZE*0.5)+'px;';
   el.appendChild(shadow);
 
-  // 3D body — moderate proportions (readable but realistic)
+  // 3D body
   const bodyH = P_SIZE * 2.2;
   const bodyW = P_SIZE - 2;
   const body = document.createElement('div');
@@ -384,15 +411,15 @@ function createPlayerEl(data) {
     + 'border-radius:3px 3px 1px 1px;box-shadow:0 1px 3px rgba(0,0,0,0.3);';
   body.appendChild(jersey);
 
-  // Arms
+  // Arms (GK gets glove color)
   const armW = Math.max(2, Math.round(bodyW * 0.15));
   const armH = Math.round(jerseyH * 0.85);
   const armTop = jerseyTop + 1;
   const lArm = document.createElement('div');
-  lArm.style.cssText = 'position:absolute;top:'+armTop+'px;left:-'+(armW+1)+'px;width:'+armW+'px;height:'+armH+'px;background:#f5d0a9;border-radius:2px;transform:rotate(10deg);';
+  lArm.style.cssText = 'position:absolute;top:'+armTop+'px;left:-'+(armW+1)+'px;width:'+armW+'px;height:'+armH+'px;background:'+gloveColor+';border-radius:2px;transform:rotate(10deg);';
   body.appendChild(lArm);
   const rArm = document.createElement('div');
-  rArm.style.cssText = 'position:absolute;top:'+armTop+'px;right:-'+(armW+1)+'px;width:'+armW+'px;height:'+armH+'px;background:#f5d0a9;border-radius:2px;transform:rotate(-10deg);';
+  rArm.style.cssText = 'position:absolute;top:'+armTop+'px;right:-'+(armW+1)+'px;width:'+armW+'px;height:'+armH+'px;background:'+gloveColor+';border-radius:2px;transform:rotate(-10deg);';
   body.appendChild(rArm);
 
   // Shorts
@@ -406,7 +433,6 @@ function createPlayerEl(data) {
   const legW = Math.max(2, Math.round(bodyW * 0.22));
   const legH = Math.round(bodyH * 0.28);
   const legTop = shortsTop + shortsH - 1;
-  const sockColor = isHome ? '#fff' : '#1a1a2e';
   const lLeg = document.createElement('div');
   lLeg.style.cssText = 'position:absolute;top:'+legTop+'px;left:'+Math.round(bodyW*0.15)+'px;width:'+legW+'px;height:'+legH+'px;'
     + 'background:linear-gradient(180deg, #f5d0a9 0%, #f5d0a9 30%, '+sockColor+' 30%, '+sockColor+' 100%);border-radius:1px;';
@@ -502,7 +528,7 @@ let dragging = null;
 let didDrag = false;
 let dragRAF = null;
 let pendingDragEvent = null;
-let rotX = 55, rotZ = 0, currentZoom = 1;
+let rotX = 90, rotZ = 0, currentZoom = 1;
 let panX = 0, panY = 0;
 
 // Responsive: fit court to viewport on mobile
@@ -522,12 +548,41 @@ function getCourtPos(e) {
   return [PX_W/2 + ux, PX_H/2 + uy / cosX];
 }
 
+let lastTapTime = 0;
+
+// Smooth camera animation for double-tap toggle
+function animateCamera(targetRotX) {
+  const startRotX = rotX;
+  const startTime = performance.now();
+  const duration = 400;
+  function step(now) {
+    const t = Math.min(1, (now - startTime) / duration);
+    const ease = t < 0.5 ? 2*t*t : -1+(4-2*t)*t;
+    rotX = startRotX + (targetRotX - startRotX) * ease;
+    updateSceneTransform();
+    if (t < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
 court.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return;
   e.preventDefault();
   const target = e.target.closest('.player, .ball');
   if (!target) {
+    // Double-tap on empty court → toggle 2D ↔ 3D
+    const now = Date.now();
+    if (now - lastTapTime < 300) {
+      animateCamera(rotX > 70 ? 55 : 90);
+      lastTapTime = 0;
+      return;
+    }
+    lastTapTime = now;
+    // Empty court drag → camera rotation
     document.querySelectorAll('.player.selected, .ball.selected').forEach(el => el.classList.remove('selected'));
+    isRotating = true;
+    rotStart = { x: e.clientX, y: e.clientY };
+    court.setPointerCapture(e.pointerId);
     return;
   }
   dragging = target;
@@ -557,6 +612,15 @@ function processDrag(e) {
 }
 
 court.addEventListener('pointermove', (e) => {
+  // Camera rotation from empty court drag
+  if (isRotating) {
+    e.preventDefault();
+    const dy = e.clientY - rotStart.y;
+    rotX = Math.max(20, Math.min(90, rotX - dy * 0.3));
+    rotStart = { x: e.clientX, y: e.clientY };
+    updateSceneTransform();
+    return;
+  }
   if (!dragging) return;
   e.preventDefault();
   pendingDragEvent = e;
@@ -570,6 +634,7 @@ court.addEventListener('pointermove', (e) => {
 });
 
 court.addEventListener('pointerup', () => {
+  if (isRotating) { isRotating = false; return; }
   if (dragRAF) { cancelAnimationFrame(dragRAF); dragRAF = null; }
   pendingDragEvent = null;
   if (dragging && didDrag) {
@@ -594,11 +659,15 @@ let rotStart = { x:0, y:0 };
 
 function updateSceneTransform() {
   sceneEl.style.transform = 'translate('+panX+'px,'+panY+'px) rotateX('+rotX+'deg) rotateZ('+rotZ+'deg) scale('+currentZoom+')';
+  const sinR = Math.sin(rotX * Math.PI / 180);
   // Scale player body proportionally to court foreshortening
-  // sin(rotX) matches how the court visually compresses at lower angles
-  // Normalized to sin(55°)=0.82 so default view = scale 1.0
-  const bodyScale = Math.max(0.25, Math.min(1.0, Math.sin(rotX * Math.PI / 180) / 0.82));
+  const bodyScale = Math.max(0.25, Math.min(1.0, sinR / 0.82));
   court.style.setProperty('--body-scale', bodyScale.toFixed(3));
+  // Shadow responds to camera angle: more offset at lower angles
+  const shadowOffY = Math.max(0, Math.round(6 * (1 - sinR)));
+  const shadowScale = (1 + (90 - rotX) * 0.008).toFixed(2);
+  court.style.setProperty('--shadow-y', shadowOffY + 'px');
+  court.style.setProperty('--shadow-scale', shadowScale);
   updateDebug();
 }
 updateSceneTransform();
@@ -616,7 +685,7 @@ viewport.addEventListener('pointermove', (e) => {
   const dx = e.clientX - rotStart.x;
   const dy = e.clientY - rotStart.y;
   rotZ += dx * 0.3;
-  rotX = Math.max(20, Math.min(80, rotX + dy * 0.3));
+  rotX = Math.max(20, Math.min(90, rotX + dy * 0.3));
   rotStart = { x: e.clientX, y: e.clientY };
   updateSceneTransform();
 });
@@ -804,8 +873,8 @@ function onRender(args) {
 
 // Info text
 document.getElementById('info').textContent = isMobile
-  ? '드래그: 이동 | 두 손가락: 줌'
-  : '드래그: 선수/공 이동 | 우클릭: 회전 | 스크롤: 줌';
+  ? '드래그: 이동 | 빈 곳: 시점 | 더블탭: 2D/3D | 두 손가락: 줌'
+  : '드래그: 이동 | 빈 곳/우클릭: 시점 | 더블클릭: 2D/3D | 스크롤: 줌';
 
 window.addEventListener("message", (event) => {
   if (event.data.type === "streamlit:render") {

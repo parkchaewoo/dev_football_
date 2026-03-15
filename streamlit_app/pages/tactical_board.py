@@ -79,14 +79,20 @@ def render_tactical_board_page():
         fk = "f0_"
 
     with frame_col5:
-        ball_h = st.slider(
-            "공 높이",
-            min_value=0.0, max_value=8.0, value=float(current_frame.ball_position.y),
-            step=0.1, format="%.1fm", label_visibility="collapsed",
-            key=fk + "ball_h",
-        )
-        if abs(ball_h - current_frame.ball_position.y) > 0.01:
-            current_frame.ball_position.y = ball_h
+        current_traj = getattr(current_frame, 'ball_trajectory', 'linear')
+        if current_traj == "parabolic":
+            ball_h = st.slider(
+                "공 높이",
+                min_value=0.0, max_value=8.0, value=float(current_frame.ball_position.y),
+                step=0.1, format="%.1fm", label_visibility="collapsed",
+                key=fk + "ball_h",
+            )
+            if abs(ball_h - current_frame.ball_position.y) > 0.01:
+                current_frame.ball_position.y = ball_h
+        else:
+            current_frame.ball_position.y = 0.0
+            ball_h = 0.0
+            st.caption("⚽ 지면")
 
     # Ball trajectory and peak height controls (when 2+ frames)
     if len(current_phase.frames) >= 2:
@@ -175,7 +181,8 @@ def render_tactical_board_page():
         st.caption("아래에서 정밀 좌표를 수정하면 3D 보드에 즉시 반영됩니다.")
 
         st.markdown("**⚽ 공 위치**")
-        ball_cols = st.columns(3)
+        is_lob = getattr(current_frame, 'ball_trajectory', 'linear') == "parabolic"
+        ball_cols = st.columns(3 if is_lob else 2)
         with ball_cols[0]:
             new_ball_x = st.number_input(
                 "공 X (좌우)", min_value=-20.0, max_value=20.0,
@@ -188,12 +195,14 @@ def render_tactical_board_page():
                 value=float(current_frame.ball_position.z), step=0.5,
                 key=fk + "ball_z", format="%.1f",
             )
-        with ball_cols[2]:
-            new_ball_y = st.number_input(
-                "공 높이 (Y)", min_value=0.0, max_value=8.0,
-                value=float(current_frame.ball_position.y), step=0.1,
-                key=fk + "ball_y", format="%.1f",
-            )
+        new_ball_y = 0.0
+        if is_lob:
+            with ball_cols[2]:
+                new_ball_y = st.number_input(
+                    "공 높이 (Y)", min_value=0.0, max_value=8.0,
+                    value=float(current_frame.ball_position.y), step=0.1,
+                    key=fk + "ball_y", format="%.1f",
+                )
         if (abs(new_ball_x - current_frame.ball_position.x) > 0.01 or
                 abs(new_ball_z - current_frame.ball_position.z) > 0.01 or
                 abs(new_ball_y - current_frame.ball_position.y) > 0.01):
