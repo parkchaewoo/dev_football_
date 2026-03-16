@@ -59,6 +59,20 @@ def get_team_strategies(team_id: str) -> list:
     return [{"id": d.id, **d.to_dict()} for d in docs]
 
 
+def get_my_strategies(author_id: str) -> list:
+    """내가 만든 전술 목록."""
+    db = get_firestore_client()
+    if not db:
+        return []
+    docs = (
+        db.collection("strategies")
+        .where("authorId", "==", author_id)
+        .order_by("updatedAt", direction="DESCENDING")
+        .get()
+    )
+    return [{"id": d.id, **d.to_dict()} for d in docs]
+
+
 def get_public_strategies() -> list:
     """공개 전술 목록."""
     db = get_firestore_client()

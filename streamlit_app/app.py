@@ -195,6 +195,15 @@ with st.sidebar:
     if strategy_name != strategy.name:
         strategy.name = strategy_name
 
+    strategy_desc = st.text_area(
+        "전략 설명",
+        value=strategy.description,
+        placeholder="전술 설명을 간단히 입력하세요 (선택)",
+        height=68,
+    )
+    if strategy_desc != strategy.description:
+        strategy.description = strategy_desc
+
     col1, col2 = st.columns(2)
     with col1:
         if st.button("🆕 새 전략", use_container_width=True):
@@ -370,7 +379,7 @@ with st.sidebar:
 # ===== MAIN CONTENT - TAB NAVIGATION =====
 st.session_state.firebase_ok = firebase_ok
 
-tab1, tab2, tab3, tab4 = st.tabs(["⚽ 전술 보드", "🌐 전술 갤러리", "🏥 부상/병원", "📋 게시판"])
+tab1, tab2, tab3, tab4 = st.tabs(["⚽ 전술 보드", "📚 전술 공유", "🏥 부상/병원", "📋 게시판"])
 
 with tab1:
     from pages.tactical_board import render_tactical_board_page
