@@ -3,9 +3,127 @@ import streamlit as st
 import json
 import copy
 from utils.models import (
-    generate_id, Position3D, Frame, Phase,
+    generate_id, Position3D, Frame, Phase, Player,
 )
 from components.tactical_board import tactical_board_component
+
+
+def _away_defaults():
+    """상대팀 기본 배치."""
+    return [
+        Player("a1", "away", 1, Position3D(19, 0, 0)),
+        Player("a2", "away", 2, Position3D(14, 0, -6)),
+        Player("a3", "away", 3, Position3D(14, 0, 6)),
+        Player("a4", "away", 4, Position3D(8, 0, -3)),
+        Player("a5", "away", 5, Position3D(8, 0, 3)),
+    ]
+
+
+def _load_example_onetwo(strategy, phase_idx):
+    """예시 1: 킥오프 원투패스 (3프레임)."""
+    away = _away_defaults()
+    f1 = Frame(generate_id(), [
+        Player("h1", "home", 1, Position3D(-19, 0, 0)),
+        Player("h2", "home", 2, Position3D(-14, 0, -6)),
+        Player("h3", "home", 3, Position3D(-14, 0, 6)),
+        Player("h4", "home", 7, Position3D(-6, 0, -2)),
+        Player("h5", "home", 10, Position3D(-1, 0, 0)),
+    ] + copy.deepcopy(away), Position3D(0, 0, 0))
+
+    f2_home = [
+        Player("h1", "home", 1, Position3D(-19, 0, 0)),
+        Player("h2", "home", 2, Position3D(-14, 0, -6)),
+        Player("h3", "home", 3, Position3D(-14, 0, 6)),
+        Player("h4", "home", 7, Position3D(-4, 0, -1)),
+        Player("h5", "home", 10, Position3D(5, 0, -4)),
+    ]
+    f2 = Frame(generate_id(), f2_home + copy.deepcopy(away), Position3D(-4, 0, -1))
+
+    f3_home = [
+        Player("h1", "home", 1, Position3D(-19, 0, 0)),
+        Player("h2", "home", 2, Position3D(-14, 0, -6)),
+        Player("h3", "home", 3, Position3D(-14, 0, 6)),
+        Player("h4", "home", 7, Position3D(-3, 0, 0)),
+        Player("h5", "home", 10, Position3D(6, 0, -4)),
+    ]
+    f3 = Frame(generate_id(), f3_home + copy.deepcopy(away), Position3D(6, 0, -3))
+
+    phase = Phase(generate_id(), "원투패스", "킥오프 원투패스 예시", [f1, f2, f3], 0)
+    strategy.phases[phase_idx] = phase
+
+
+def _load_example_corner(strategy, phase_idx):
+    """예시 2: 코너킥 롭볼 (2프레임)."""
+    away = [
+        Player("a1", "away", 1, Position3D(19, 0, 0)),
+        Player("a2", "away", 2, Position3D(14, 0, -4)),
+        Player("a3", "away", 3, Position3D(14, 0, 4)),
+        Player("a4", "away", 4, Position3D(10, 0, 0)),
+        Player("a5", "away", 5, Position3D(12, 0, -2)),
+    ]
+    f1 = Frame(generate_id(), [
+        Player("h1", "home", 1, Position3D(-19, 0, 0)),
+        Player("h2", "home", 2, Position3D(-10, 0, 0)),
+        Player("h3", "home", 3, Position3D(15, 0, -3)),
+        Player("h4", "home", 4, Position3D(15, 0, 3)),
+        Player("h5", "home", 10, Position3D(19, 0, -9)),
+    ] + copy.deepcopy(away), Position3D(19.5, 0, -9.5))
+
+    f2 = Frame(generate_id(), [
+        Player("h1", "home", 1, Position3D(-19, 0, 0)),
+        Player("h2", "home", 2, Position3D(-10, 0, 0)),
+        Player("h3", "home", 3, Position3D(16, 0, -2)),
+        Player("h4", "home", 4, Position3D(16, 0, 3)),
+        Player("h5", "home", 10, Position3D(19, 0, -8)),
+    ] + copy.deepcopy(away), Position3D(16, 0, -2), 4.0, "parabolic")
+
+    phase = Phase(generate_id(), "코너킥", "코너킥 롭볼 예시", [f1, f2], 0)
+    strategy.phases[phase_idx] = phase
+
+
+def _load_example_transition(strategy):
+    """예시 3: 수비→공격 전환 (2단계)."""
+    away = _away_defaults()
+
+    # 1단계: 수비 대형 (1-2-1)
+    df1 = Frame(generate_id(), [
+        Player("h1", "home", 1, Position3D(-19, 0, 0)),
+        Player("h2", "home", 2, Position3D(-12, 0, -5)),
+        Player("h3", "home", 3, Position3D(-12, 0, 5)),
+        Player("h4", "home", 4, Position3D(-6, 0, 0)),
+        Player("h5", "home", 5, Position3D(-14, 0, 0)),
+    ] + copy.deepcopy(away), Position3D(-4, 0, 0))
+
+    df2 = Frame(generate_id(), [
+        Player("h1", "home", 1, Position3D(-19, 0, 0)),
+        Player("h2", "home", 2, Position3D(-10, 0, -4)),
+        Player("h3", "home", 3, Position3D(-10, 0, 4)),
+        Player("h4", "home", 4, Position3D(-5, 0, 0)),
+        Player("h5", "home", 5, Position3D(-13, 0, 0)),
+    ] + copy.deepcopy(away), Position3D(-5, 0, 1))
+
+    phase1 = Phase(generate_id(), "수비 대형", "1-2-1 수비 배치", [df1, df2], 0)
+
+    # 2단계: 역습 전환
+    af1 = Frame(generate_id(), [
+        Player("h1", "home", 1, Position3D(-19, 0, 0)),
+        Player("h2", "home", 2, Position3D(-10, 0, -4)),
+        Player("h3", "home", 3, Position3D(-10, 0, 4)),
+        Player("h4", "home", 4, Position3D(-2, 0, 0)),
+        Player("h5", "home", 5, Position3D(-6, 0, 3)),
+    ] + copy.deepcopy(away), Position3D(-2, 0, 0))
+
+    af2 = Frame(generate_id(), [
+        Player("h1", "home", 1, Position3D(-19, 0, 0)),
+        Player("h2", "home", 2, Position3D(-6, 0, -5)),
+        Player("h3", "home", 3, Position3D(-4, 0, 5)),
+        Player("h4", "home", 4, Position3D(6, 0, 0)),
+        Player("h5", "home", 5, Position3D(4, 0, 4)),
+    ] + copy.deepcopy(away), Position3D(6, 0, 1))
+
+    phase2 = Phase(generate_id(), "역습 전환", "수비에서 공격으로", [af1, af2], 1)
+
+    strategy.phases = [phase1, phase2]
 
 
 def render_tactical_board_page():
@@ -59,61 +177,128 @@ def render_tactical_board_page():
 
         with guide_tab2:
             st.markdown("#### 예시 1: 킥오프 후 원투패스 만들기")
+            st.markdown("> 킥오프 상황에서 중앙 선수가 원투패스로 전진하는 전술입니다.")
+
+            ex1_c1, ex1_c2, ex1_c3 = st.columns(3)
+            with ex1_c1:
+                st.caption("프레임 1: 초기 배치")
+                st.code(
+                    "┌───── GOAL ─────┐\n"
+                    "│                │\n"
+                    "│  ④         ⑤  │\n"
+                    "│      ⑩⚽      │\n"
+                    "│  ②         ③  │\n"
+                    "│       ①       │\n"
+                    "└───── GOAL ─────┘",
+                    language=None,
+                )
+            with ex1_c2:
+                st.caption("프레임 2: 패스 + 런")
+                st.code(
+                    "┌───── GOAL ─────┐\n"
+                    "│                │\n"
+                    "│  ④    ⑩↗  ⑤  │\n"
+                    "│    ⑦⚽        │\n"
+                    "│  ②         ③  │\n"
+                    "│       ①       │\n"
+                    "└───── GOAL ─────┘",
+                    language=None,
+                )
+            with ex1_c3:
+                st.caption("프레임 3: 리턴패스")
+                st.code(
+                    "┌───── GOAL ─────┐\n"
+                    "│                │\n"
+                    "│  ④    ⑩⚽ ⑤  │\n"
+                    "│    ⑦    ↑     │\n"
+                    "│  ②         ③  │\n"
+                    "│       ①       │\n"
+                    "└───── GOAL ─────┘",
+                    language=None,
+                )
+
             st.markdown("""
-> 킥오프 상황에서 중앙 선수가 원투패스로 전진하는 전술을 만들어 봅시다.
-
-**1단계 — 초기 배치 (프레임 1)**
-1. 기본 배치 상태에서 시작합니다
-2. 공을 **중앙 선수(#10)** 발 앞으로 드래그합니다
-
-**2단계 — 짧은 패스 (프레임 2)**
-1. **+ 프레임 추가**를 클릭합니다
-2. 공을 **가까운 동료(#7)** 쪽으로 드래그합니다
-3. #10 선수를 앞쪽 빈 공간으로 달리게 드래그합니다 (벽패스 런)
-
-**3단계 — 리턴 패스 (프레임 3)**
-1. **+ 프레임 추가**를 다시 클릭합니다
-2. 공을 **달려간 #10** 앞으로 드래그합니다
-3. ▶ **전체 재생**을 눌러 원투패스 움직임을 확인합니다!
+**진행 방법**: 프레임 1에서 공을 #10 앞에 배치 → 프레임 추가 후 공을 #7에게, #10을 전방으로 → 프레임 추가 후 공을 #10 앞으로
 """)
+            if st.button("📥 이 예시 불러오기", key="load_ex1"):
+                _load_example_onetwo(strategy, phase_idx)
+                st.session_state.current_frame_idx = 0
+                st.rerun()
             st.divider()
 
             st.markdown("#### 예시 2: 코너킥 롭볼 전술")
+            st.markdown("> 코너킥에서 롭볼로 니어포스트를 공략하는 세트피스입니다.")
+
+            ex2_c1, ex2_c2 = st.columns(2)
+            with ex2_c1:
+                st.caption("프레임 1: 코너킥 배치")
+                st.code(
+                    "┌───── GOAL ─────┐\n"
+                    "│ ⑤  ④  ③      │\n"
+                    "│        ⓐⓑⓒ  │\n"
+                    "│  ②            │\n"
+                    "│               │\n"
+                    "│       ①       │\n"
+                    "└──── GOAL ──⑩⚽┘",
+                    language=None,
+                )
+            with ex2_c2:
+                st.caption("프레임 2: 롭볼 (포물선)")
+                st.code(
+                    "┌───── GOAL ─────┐\n"
+                    "│ ⑤⚽④  ③      │\n"
+                    "│   ↗    ⓐⓑⓒ  │\n"
+                    "│  ②            │\n"
+                    "│               │\n"
+                    "│       ①       │\n"
+                    "└──── GOAL ───⑩─┘",
+                    language=None,
+                )
             st.markdown("""
-> 코너킥에서 롭볼로 니어포스트를 공략하는 세트피스를 그려봅시다.
-
-**1단계 — 코너킥 배치 (프레임 1)**
-1. 공을 코너 부근 **(X: -20, Z: -10)** 으로 이동합니다
-2. 홈팀 선수 1명을 공 옆에 배치 (키커)
-3. 나머지 선수를 페널티 에어리어 근처에 배치합니다
-
-**2단계 — 롭볼 진행 (프레임 2)**
-1. **+ 프레임 추가** 클릭
-2. 공 궤적을 **롭볼**로 변경합니다
-3. **최고 높이**를 **4.0m**으로 설정합니다
-4. 공을 **니어포스트 (X: -16, Z: -2)** 쪽으로 이동합니다
-5. 니어포스트 공략 선수를 해당 위치로 이동시킵니다
-6. ▶ **전체 재생**으로 공이 포물선을 그리며 날아가는 것을 확인!
+**진행 방법**: 공을 코너에 배치 → 프레임 추가 → 공 궤적을 **롭볼**로, 높이 **4.0m** → 공을 니어포스트로, ⑤를 해당 위치로 이동
 """)
+            if st.button("📥 이 예시 불러오기", key="load_ex2"):
+                _load_example_corner(strategy, phase_idx)
+                st.session_state.current_frame_idx = 0
+                st.rerun()
             st.divider()
 
             st.markdown("#### 예시 3: 단계 기능으로 수비→공격 전환")
+            st.markdown("> 수비 대형과 공격 전환을 '단계'로 나눠 관리합니다.")
+
+            ex3_c1, ex3_c2 = st.columns(2)
+            with ex3_c1:
+                st.caption("1단계: 수비 대형 (1-2-1)")
+                st.code(
+                    "┌───── GOAL ─────┐\n"
+                    "│                │\n"
+                    "│       ④       │\n"
+                    "│  ②    ⚽   ③  │\n"
+                    "│       ⑤       │\n"
+                    "│       ①       │\n"
+                    "└───── GOAL ─────┘",
+                    language=None,
+                )
+            with ex3_c2:
+                st.caption("2단계: 역습 전환")
+                st.code(
+                    "┌───── GOAL ─────┐\n"
+                    "│          ⑤→   │\n"
+                    "│     ④  ⚽→    │\n"
+                    "│                │\n"
+                    "│  ②         ③  │\n"
+                    "│       ①       │\n"
+                    "└───── GOAL ─────┘",
+                    language=None,
+                )
             st.markdown("""
-> 수비 대형과 공격 전환을 '단계'로 나눠 관리해봅시다.
-
-**1단계 — 수비 대형 (1단계)**
-1. 사이드바에서 단계 이름을 **"수비 대형"**으로 입력합니다
-2. 선수들을 수비 위치로 배치합니다 (4-0 또는 1-2-1 등)
-3. 프레임을 추가해 수비 시 움직임을 그립니다
-
-**2단계 — 공격 전환 (2단계)**
-1. 사이드바에서 **➕ 단계 추가**를 클릭합니다
-2. 단계 이름을 **"역습 전환"**으로 입력합니다
-3. 이전 단계 마지막 프레임의 선수 배치가 복사되어 있습니다
-4. 프레임을 추가하며 역습 동선을 그립니다
-
-> 단계별로 전술을 나누면 팀원에게 **수비→공격 전환**을 체계적으로 설명할 수 있습니다!
+**진행 방법**: 1단계에서 수비 대형 배치 → 사이드바에서 **➕ 단계 추가** → 2단계에서 역습 동선을 프레임으로 그리기
 """)
+            if st.button("📥 이 예시 불러오기", key="load_ex3"):
+                _load_example_transition(strategy)
+                st.session_state.current_phase_idx = 0
+                st.session_state.current_frame_idx = 0
+                st.rerun()
             st.divider()
 
             st.markdown("#### 예시 4: 팀원에게 전술 공유하기")
@@ -127,7 +312,6 @@ def render_tactical_board_page():
    - **나만 보기**: 나만 볼 수 있음
 3. **☁️ 팀에 저장**을 클릭합니다
 4. 팀원은 **📚 전술 공유** 탭 → **👥 팀 전술**에서 확인할 수 있습니다
-5. 다른 팀의 전술이 마음에 들면 **📋 내 전술로 복사** 또는 **💾 우리 팀에 저장**을 할 수 있습니다
 """)
 
         with guide_tab3:

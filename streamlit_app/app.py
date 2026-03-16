@@ -71,6 +71,51 @@ if not st.session_state.user:
 
         if not firebase_ok:
             st.info("Firebase 미설정: 로컬 모드로 실행됩니다. (팀/공유 기능 제한)")
+            with st.expander("🔧 Firebase 설정 방법 (팀 기능 활성화)"):
+                st.markdown("""
+팀 만들기/가입, 전술 공유 기능을 사용하려면 Firebase 설정이 필요합니다.
+
+**사전 준비**
+1. [Firebase 콘솔](https://console.firebase.google.com/)에서 프로젝트 생성
+2. **Firestore Database** 활성화 (테스트 모드로 시작 가능)
+3. 프로젝트 설정 → 서비스 계정 → **새 비공개 키 생성** (JSON 파일 다운로드)
+
+---
+
+**방법 1: Streamlit Secrets (권장)**
+
+`~/.streamlit/secrets.toml` 파일에 추가:
+```toml
+[firebase]
+type = "service_account"
+project_id = "your-project-id"
+private_key_id = "your-key-id"
+private_key = "-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n"
+client_email = "firebase-adminsdk-...@your-project.iam.gserviceaccount.com"
+client_id = "123456789"
+auth_uri = "https://accounts.google.com/o/oauth2/auth"
+token_uri = "https://oauth2.googleapis.com/token"
+```
+> Streamlit Cloud 배포 시에는 앱 설정 → Secrets에서 동일하게 입력
+
+---
+
+**방법 2: 환경변수 — 서비스 계정 파일 경로**
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
+streamlit run app.py
+```
+
+---
+
+**방법 3: 환경변수 — JSON 문자열**
+```bash
+export FIREBASE_CREDENTIALS_JSON='{"type":"service_account","project_id":"..."}'
+streamlit run app.py
+```
+
+> 설정 후 앱을 재시작하면 팀/공유 기능이 활성화됩니다.
+""")
     st.stop()
 
 # ===== TEAM SELECTION (Firebase only) =====

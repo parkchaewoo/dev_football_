@@ -24,12 +24,47 @@
     opacity:0; transition: opacity 0.3s;
   }
   #frame-indicator.visible { opacity:1; }
+  #loading {
+    position:absolute; top:50%; left:50%;
+    transform:translate(-50%,-50%);
+    color:rgba(255,255,255,0.8); font-size:16px;
+    z-index:200; text-align:center;
+  }
+  #loading .spinner {
+    width:32px; height:32px; margin:0 auto 12px;
+    border:3px solid rgba(255,255,255,0.2);
+    border-top-color:rgba(255,255,255,0.8);
+    border-radius:50%;
+    animation:spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  #error-msg {
+    display:none; position:absolute; top:50%; left:50%;
+    transform:translate(-50%,-50%);
+    color:rgba(255,255,255,0.9); font-size:14px;
+    z-index:200; text-align:center;
+    background:rgba(0,0,0,0.6); padding:24px 32px;
+    border-radius:12px; max-width:360px;
+  }
+  #error-msg p { margin-bottom:12px; }
+  #error-msg button {
+    background:#3b82f6; color:#fff; border:none;
+    padding:8px 20px; border-radius:8px; cursor:pointer;
+    font-size:14px;
+  }
+  #error-msg button:hover { background:#2563eb; }
 </style>
 </head>
 <body>
 <div id="container"></div>
 <div id="frame-indicator"></div>
 <div id="info"></div>
+<div id="loading"><div class="spinner"></div>전술 보드 로딩 중...</div>
+<div id="error-msg">
+  <p>전술 보드를 불러올 수 없습니다.</p>
+  <p style="font-size:12px;color:rgba(255,255,255,0.6)">네트워크 연결을 확인하고 새로고침해주세요.</p>
+  <button onclick="location.reload()">새로고침</button>
+</div>
 
 <script type="importmap">
 {
@@ -40,8 +75,17 @@
 }
 </script>
 <script type="module">
-import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+let THREE, OrbitControls;
+try {
+  THREE = await import('three');
+  const addons = await import('three/addons/controls/OrbitControls.js');
+  OrbitControls = addons.OrbitControls;
+  document.getElementById('loading').style.display = 'none';
+} catch (e) {
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('error-msg').style.display = 'block';
+  throw e;
+}
 
 // ===== STREAMLIT COMPONENT COMMUNICATION =====
 function sendMessageToStreamlit(type, data) {
