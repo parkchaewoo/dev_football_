@@ -76,6 +76,7 @@
 </script>
 <script type="module">
 let THREE, OrbitControls;
+let __loadFailed = false;
 try {
   THREE = await import('three');
   const addons = await import('three/addons/controls/OrbitControls.js');
@@ -91,14 +92,8 @@ try {
   } catch (e2) {
     document.getElementById('loading').style.display = 'none';
     document.getElementById('error-msg').style.display = 'block';
-    // Streamlit에 컴포넌트 준비 알림 (자체 에러 메시지 방지)
-    function sendMsg(type, data) {
-      window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type: type }, data), "*");
-    }
-    sendMsg("streamlit:setFrameHeight", { height: 500 });
-    sendMsg("streamlit:componentReady", { apiVersion: 1 });
     console.error("Three.js 로딩 실패:", e1, e2);
-    return;
+    __loadFailed = true;
   }
 }
 
@@ -115,6 +110,13 @@ function setFrameHeight(height) {
 function signalReady() {
   sendMessageToStreamlit("streamlit:componentReady", { apiVersion: 1 });
 }
+
+// CDN 로딩 실패 시: signalReady만 호출하고 초기화 중단
+if (__loadFailed) {
+  setFrameHeight(500);
+  signalReady();
+}
+if (__loadFailed) { throw new Error("Three.js unavailable"); }
 
 // ===== CONFIG =====
 const CW = 40, CH = 20;
