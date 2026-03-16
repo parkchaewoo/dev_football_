@@ -1,7 +1,7 @@
-"""팀 게시판 서비스 - Firestore CRUD + 로컬 모드 지원."""
+"""팀 게시판 서비스 - 로컬 JSON 저장소."""
 from __future__ import annotations
 
-from services.firebase_init import get_firestore_client
+from services import local_store
 import time
 import hashlib
 
@@ -47,10 +47,6 @@ def create_post(
     password: str = "",
 ) -> dict | None:
     """게시글 작성."""
-    db = get_firestore_client()
-    if not db:
-        return None
-
     post_data = {
         "title": title,
         "content": content,
@@ -62,36 +58,28 @@ def create_post(
         "createdAt": int(time.time() * 1000),
         "updatedAt": int(time.time() * 1000),
     }
-    _, ref = db.collection("board_posts").add(post_data)
-    post_data["id"] = ref.id
+    post_id = local_store.add_doc("board_posts", post_data)
+    post_data["id"] = post_id
     return post_data
 
 
 def get_team_posts(team_id: str) -> list:
     """팀 게시글 목록 조회 (최신순)."""
-    db = get_firestore_client()
-    if not db:
-        return []
-    docs = (
-        db.collection("board_posts")
-        .where("teamId", "==", team_id)
-        .order_by("createdAt", direction="DESCENDING")
-        .limit(50)
-        .get()
+    return local_store.query(
+        "board_posts",
+        [("teamId", "==", team_id)],
+        order_by="createdAt",
+        order_dir="DESC",
+        limit=50,
     )
-    return [{"id": d.id, **d.to_dict()} for d in docs]
 
 
 def get_post(post_id: str) -> dict | None:
     """단일 게시글 조회."""
-    db = get_firestore_client()
-    if not db:
-        return None
-    doc = db.collection("board_posts").document(post_id).get()
-    if doc.exists:
-        data = doc.to_dict()
-        data["id"] = doc.id
-        return data
+    doc = local_store.get_doc("board_posts", post_id)
+    if doc:
+        doc["id"] = post_id
+        return doc
     return None
 
 
@@ -113,9 +101,6 @@ def update_post(
     password: str = "",
 ) -> bool:
     """게시글 수정."""
-    db = get_firestore_client()
-    if not db:
-        return False
     update_data = {
         "title": title,
         "content": content,
@@ -126,13 +111,10 @@ def update_post(
         update_data["passwordHash"] = _hash_password(password)
     elif not is_secret:
         update_data["passwordHash"] = ""
-    db.collection("board_posts").document(post_id).update(update_data)
+    local_store.update_doc("board_posts", post_id, update_data)
     return True
 
 
 def delete_post(post_id: str) -> None:
     """게시글 삭제."""
-    db = get_firestore_client()
-    if not db:
-        return
-    db.collection("board_posts").document(post_id).delete()
+    local_store.delete_doc("board_posts", post_id)

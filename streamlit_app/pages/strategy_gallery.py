@@ -7,7 +7,7 @@ import datetime
 def _render_strategy_card(s, idx, prefix, user, team, show_team_badge=True):
     """전술 카드 하나를 렌더링."""
     from services.social_service import has_liked, toggle_like, get_comments, add_comment, delete_comment
-    from services.strategy_service import save_strategy_to_firestore, delete_strategy
+    from services.strategy_service import save_strategy, delete_strategy
     from utils.models import strategy_from_firestore, strategy_to_json
 
     strat_id = s["id"]
@@ -74,7 +74,7 @@ def _render_strategy_card(s, idx, prefix, user, team, show_team_badge=True):
                     loaded = strategy_from_firestore(s)
                     strategy_dict = json.loads(strategy_to_json(loaded))
                     strategy_dict["name"] = f"{name} (공유됨)"
-                    new_id = save_strategy_to_firestore(
+                    new_id = save_strategy(
                         strategy_dict,
                         user["uid"],
                         user["displayName"],
@@ -133,16 +133,11 @@ def _render_strategy_card(s, idx, prefix, user, team, show_team_badge=True):
 
 
 def render_strategy_gallery_page():
-    firebase_ok = st.session_state.get("firebase_ok", False)
     user = st.session_state.user
     team = st.session_state.get("current_team")
 
     st.subheader("📚 전술 공유")
     st.caption("팀원들과 전술을 공유하고, 다른 팀의 공개 전술도 참고해보세요.")
-
-    if not firebase_ok:
-        st.info("Firebase 미설정: 온라인 갤러리를 사용할 수 없습니다.")
-        return
 
     from services.strategy_service import get_team_strategies, get_public_strategies
 

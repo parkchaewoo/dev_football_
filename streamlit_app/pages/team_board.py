@@ -6,7 +6,6 @@ import datetime
 def render_team_board_page():
     user = st.session_state.user
     team = st.session_state.current_team
-    firebase_ok = st.session_state.get("firebase_ok", False)
 
     st.header("📋 팀 게시판")
 
@@ -14,12 +13,6 @@ def render_team_board_page():
         st.info("팀에 가입한 후 게시판을 사용할 수 있습니다.")
         return
 
-    # ===== LOCAL MODE (no Firebase) =====
-    if not firebase_ok:
-        _render_local_board()
-        return
-
-    # ===== FIREBASE MODE =====
     from services.board_service import (
         create_post, get_team_posts, get_post,
         update_post, delete_post,
@@ -262,59 +255,3 @@ def _render_post_detail(user, team_data, user_is_admin, get_post_fn, delete_post
                 st.session_state.board_detail_id = None
                 st.success("삭제되었습니다.")
                 st.rerun()
-
-
-def _render_local_board():
-    """로컬 모드 게시판 (세션 기반)."""
-    if "local_posts" not in st.session_state:
-        st.session_state.local_posts = []
-
-    st.caption("Firebase 미설정: 게시글이 세션 종료 시 사라집니다.")
-
-    col_t, col_b = st.columns([4, 1])
-    with col_t:
-        st.subheader("게시판")
-    with col_b:
-        if st.button("✏️ 글쓰기", key="local_write_btn", use_container_width=True, type="primary"):
-            st.session_state.local_board_writing = True
-
-    if st.session_state.get("local_board_writing"):
-        title = st.text_input("제목", key="local_title")
-        content = st.text_area("내용", key="local_content", height=150)
-        is_secret = st.checkbox("🔒 비밀글", key="local_secret")
-        password = ""
-        if is_secret:
-            password = st.text_input("비밀번호", type="password", key="local_pw")
-
-        if st.button("작성", type="primary"):
-            if title.strip() and content.strip():
-                import time
-                st.session_state.local_posts.insert(0, {
-                    "title": title.strip(),
-                    "content": content.strip(),
-                    "authorName": st.session_state.nickname,
-                    "isSecret": is_secret,
-                    "password": password,
-                    "createdAt": int(time.time() * 1000),
-                })
-                st.session_state.local_board_writing = False
-                st.rerun()
-
-        if st.button("취소"):
-            st.session_state.local_board_writing = False
-            st.rerun()
-        return
-
-    for i, post in enumerate(st.session_state.local_posts):
-        secret_icon = "🔒 " if post.get("isSecret") else ""
-        ts = post.get("createdAt", 0)
-        date_str = datetime.datetime.fromtimestamp(ts / 1000).strftime("%m/%d %H:%M") if ts else ""
-        with st.expander(f"{secret_icon}{post['title']} — {post['authorName']} ({date_str})"):
-            if post.get("isSecret"):
-                pw = st.text_input("비밀번호", type="password", key=f"local_read_pw_{i}")
-                if pw == post.get("password", ""):
-                    st.markdown(post["content"])
-                elif pw:
-                    st.error("비밀번호가 일치하지 않습니다.")
-            else:
-                st.markdown(post["content"])

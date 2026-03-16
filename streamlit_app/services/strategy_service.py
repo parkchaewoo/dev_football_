@@ -1,15 +1,10 @@
 from __future__ import annotations
 
-from services.firebase_init import get_firestore_client
+from services import local_store
 import time
 
-try:
-    from google.cloud.firestore_v1 import Increment
-except ImportError:
-    Increment = None
 
-
-def save_strategy_to_firestore(
+def save_strategy(
     strategy_dict: dict,
     author_id: str,
     author_name: str,
@@ -18,11 +13,7 @@ def save_strategy_to_firestore(
     visibility: str,
     existing_id: str = None,
 ) -> str | None:
-    """전략을 Firestore에 저장. 반환: strategy ID."""
-    db = get_firestore_client()
-    if not db:
-        return None
-
+    """전략 저장. 반환: strategy ID."""
     data = {
         "name": strategy_dict.get("name", ""),
         "description": strategy_dict.get("description", ""),
@@ -36,70 +27,53 @@ def save_strategy_to_firestore(
     }
 
     if existing_id:
-        db.collection("strategies").document(existing_id).update(data)
+        local_store.update_doc("strategies", existing_id, data)
         return existing_id
     else:
         data["createdAt"] = int(time.time() * 1000)
         data["likesCount"] = 0
-        _, ref = db.collection("strategies").add(data)
-        return ref.id
+        return local_store.add_doc("strategies", data)
+
+
+# 하위 호환용 별칭
+save_strategy_to_firestore = save_strategy
 
 
 def get_team_strategies(team_id: str) -> list:
     """팀 전술 목록."""
-    db = get_firestore_client()
-    if not db:
-        return []
-    docs = (
-        db.collection("strategies")
-        .where("teamId", "==", team_id)
-        .order_by("updatedAt", direction="DESCENDING")
-        .get()
+    return local_store.query(
+        "strategies",
+        [("teamId", "==", team_id)],
+        order_by="updatedAt",
+        order_dir="DESC",
     )
-    return [{"id": d.id, **d.to_dict()} for d in docs]
 
 
 def get_my_strategies(author_id: str) -> list:
     """내가 만든 전술 목록."""
-    db = get_firestore_client()
-    if not db:
-        return []
-    docs = (
-        db.collection("strategies")
-        .where("authorId", "==", author_id)
-        .order_by("updatedAt", direction="DESCENDING")
-        .get()
+    return local_store.query(
+        "strategies",
+        [("authorId", "==", author_id)],
+        order_by="updatedAt",
+        order_dir="DESC",
     )
-    return [{"id": d.id, **d.to_dict()} for d in docs]
 
 
 def get_public_strategies() -> list:
     """공개 전술 목록."""
-    db = get_firestore_client()
-    if not db:
-        return []
-    docs = (
-        db.collection("strategies")
-        .where("visibility", "==", "public")
-        .order_by("updatedAt", direction="DESCENDING")
-        .get()
+    return local_store.query(
+        "strategies",
+        [("visibility", "==", "public")],
+        order_by="updatedAt",
+        order_dir="DESC",
     )
-    return [{"id": d.id, **d.to_dict()} for d in docs]
 
 
 def delete_strategy(strategy_id: str) -> None:
     """전략 삭제."""
-    db = get_firestore_client()
-    if not db:
-        return
-    db.collection("strategies").document(strategy_id).delete()
+    local_store.delete_doc("strategies", strategy_id)
 
 
 def increment_likes(strategy_id: str, delta: int) -> None:
     """좋아요 수 증감."""
-    db = get_firestore_client()
-    if not db:
-        return
-    db.collection("strategies").document(strategy_id).update({
-        "likesCount": Increment(delta)
-    })
+    local_store.increment("strategies", strategy_id, "likesCount", delta)

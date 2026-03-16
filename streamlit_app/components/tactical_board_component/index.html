@@ -81,10 +81,25 @@ try {
   const addons = await import('three/addons/controls/OrbitControls.js');
   OrbitControls = addons.OrbitControls;
   document.getElementById('loading').style.display = 'none';
-} catch (e) {
-  document.getElementById('loading').style.display = 'none';
-  document.getElementById('error-msg').style.display = 'block';
-  throw e;
+} catch (e1) {
+  // 폴백: unpkg CDN 시도
+  try {
+    THREE = await import('https://unpkg.com/three@0.164.0/build/three.module.js');
+    const addons = await import('https://unpkg.com/three@0.164.0/examples/jsm/controls/OrbitControls.js');
+    OrbitControls = addons.OrbitControls;
+    document.getElementById('loading').style.display = 'none';
+  } catch (e2) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('error-msg').style.display = 'block';
+    // Streamlit에 컴포넌트 준비 알림 (자체 에러 메시지 방지)
+    function sendMsg(type, data) {
+      window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type: type }, data), "*");
+    }
+    sendMsg("streamlit:setFrameHeight", { height: 500 });
+    sendMsg("streamlit:componentReady", { apiVersion: 1 });
+    console.error("Three.js 로딩 실패:", e1, e2);
+    return;
+  }
 }
 
 // ===== STREAMLIT COMPONENT COMMUNICATION =====

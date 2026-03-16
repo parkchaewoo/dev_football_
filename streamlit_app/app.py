@@ -6,10 +6,6 @@ from utils.models import (
     strategy_to_json, strategy_from_json, strategy_from_firestore,
     generate_id, Phase, Frame,
 )
-from services.firebase_init import is_firebase_configured
-
-# Firebase 서비스는 지연 import (firebase-admin 미설치 시에도 앱 동작)
-firebase_ok = is_firebase_configured()
 
 st.set_page_config(
     page_title="풋살 전술 보드",
@@ -54,72 +50,17 @@ if not st.session_state.user:
         nick = st.text_input("닉네임을 입력하세요", key="login_nick", placeholder="닉네임")
         if st.button("시작하기", use_container_width=True, type="primary"):
             if nick.strip():
-                if firebase_ok:
-                    from services.auth_service import create_or_get_user
-                    user = create_or_get_user(nick.strip())
-                    st.session_state.user = user
-                else:
-                    st.session_state.user = {
-                        "uid": generate_id(),
-                        "displayName": nick.strip(),
-                        "teams": [],
-                    }
+                from services.auth_service import create_or_get_user
+                user = create_or_get_user(nick.strip())
+                st.session_state.user = user
                 st.session_state.nickname = nick.strip()
                 st.rerun()
             else:
                 st.warning("닉네임을 입력해주세요.")
-
-        if not firebase_ok:
-            st.info("Firebase 미설정: 로컬 모드로 실행됩니다. (팀/공유 기능 제한)")
-            with st.expander("🔧 Firebase 설정 방법 (팀 기능 활성화)"):
-                st.markdown("""
-팀 만들기/가입, 전술 공유 기능을 사용하려면 Firebase 설정이 필요합니다.
-
-**사전 준비**
-1. [Firebase 콘솔](https://console.firebase.google.com/)에서 프로젝트 생성
-2. **Firestore Database** 활성화 (테스트 모드로 시작 가능)
-3. 프로젝트 설정 → 서비스 계정 → **새 비공개 키 생성** (JSON 파일 다운로드)
-
----
-
-**방법 1: Streamlit Secrets (권장)**
-
-`~/.streamlit/secrets.toml` 파일에 추가:
-```toml
-[firebase]
-type = "service_account"
-project_id = "your-project-id"
-private_key_id = "your-key-id"
-private_key = "-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n"
-client_email = "firebase-adminsdk-...@your-project.iam.gserviceaccount.com"
-client_id = "123456789"
-auth_uri = "https://accounts.google.com/o/oauth2/auth"
-token_uri = "https://oauth2.googleapis.com/token"
-```
-> Streamlit Cloud 배포 시에는 앱 설정 → Secrets에서 동일하게 입력
-
----
-
-**방법 2: 환경변수 — 서비스 계정 파일 경로**
-```bash
-export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
-streamlit run app.py
-```
-
----
-
-**방법 3: 환경변수 — JSON 문자열**
-```bash
-export FIREBASE_CREDENTIALS_JSON='{"type":"service_account","project_id":"..."}'
-streamlit run app.py
-```
-
-> 설정 후 앱을 재시작하면 팀/공유 기능이 활성화됩니다.
-""")
     st.stop()
 
-# ===== TEAM SELECTION (Firebase only) =====
-if firebase_ok and not st.session_state.current_team:
+# ===== TEAM SELECTION =====
+if not st.session_state.current_team:
     from services.team_service import create_team, join_team_by_code, get_my_teams, leave_team
 
     user = st.session_state.user
@@ -192,10 +133,6 @@ if firebase_ok and not st.session_state.current_team:
 
     st.stop()
 
-# If firebase not configured, set a dummy team
-if not firebase_ok and not st.session_state.current_team:
-    st.session_state.current_team = {"id": "", "name": "로컬", "inviteCode": ""}
-
 # ===== MAIN APP =====
 strategy = st.session_state.strategy
 phase_idx = st.session_state.current_phase_idx
@@ -267,9 +204,9 @@ with st.sidebar:
             use_container_width=True,
         )
 
-    # Firestore save
-    if firebase_ok and team and team.get("id"):
-        from services.strategy_service import save_strategy_to_firestore
+    # Save to storage
+    if team and team.get("id"):
+        from services.strategy_service import save_strategy
         visibility = st.selectbox(
             "공개 범위",
             ["team", "public", "private"],
@@ -278,7 +215,7 @@ with st.sidebar:
         if st.button("☁️ 팀에 저장", use_container_width=True, type="primary"):
             if strategy.name.strip():
                 strategy_dict = json.loads(strategy_to_json(strategy))
-                sid = save_strategy_to_firestore(
+                sid = save_strategy(
                     strategy_dict,
                     user["uid"],
                     user["displayName"],
@@ -306,37 +243,19 @@ with st.sidebar:
         except Exception as e:
             st.error(f"파일 로드 실패: {e}")
 
-    # Load from Firestore
-    if firebase_ok:
-        from services.strategy_service import get_team_strategies, get_public_strategies
+    # Load from storage
+    from services.strategy_service import get_team_strategies, get_public_strategies
 
-        st.divider()
-        load_tab1, load_tab2 = st.tabs(["팀 전술", "공개 전술"])
-        with load_tab1:
-            if team and team.get("id"):
-                team_strats = get_team_strategies(team["id"])
-                for s in team_strats:
-                    vis_label = {"public": "🌐", "team": "👥", "private": "🔒"}.get(s.get("visibility", ""), "")
-                    if st.button(
-                        f"{vis_label} {s.get('name', '?')} — {s.get('authorName', '')}",
-                        key=f"load_t_{s['id']}",
-                        use_container_width=True,
-                    ):
-                        loaded = strategy_from_firestore(s)
-                        st.session_state.strategy = loaded
-                        st.session_state.current_phase_idx = 0
-                        st.session_state.current_frame_idx = 0
-                        st.session_state.firestore_strategy_id = s["id"]
-                        st.rerun()
-            else:
-                st.caption("팀을 선택하면 팀 전술을 볼 수 있습니다.")
-
-        with load_tab2:
-            pub_strats = get_public_strategies()
-            for s in pub_strats:
+    st.divider()
+    load_tab1, load_tab2 = st.tabs(["팀 전술", "공개 전술"])
+    with load_tab1:
+        if team and team.get("id"):
+            team_strats = get_team_strategies(team["id"])
+            for s in team_strats:
+                vis_label = {"public": "🌐", "team": "👥", "private": "🔒"}.get(s.get("visibility", ""), "")
                 if st.button(
-                    f"🌐 {s.get('name', '?')} — {s.get('authorName', '')} ({s.get('teamName', '')})",
-                    key=f"load_p_{s['id']}",
+                    f"{vis_label} {s.get('name', '?')} — {s.get('authorName', '')}",
+                    key=f"load_t_{s['id']}",
                     use_container_width=True,
                 ):
                     loaded = strategy_from_firestore(s)
@@ -345,6 +264,23 @@ with st.sidebar:
                     st.session_state.current_frame_idx = 0
                     st.session_state.firestore_strategy_id = s["id"]
                     st.rerun()
+        else:
+            st.caption("팀을 선택하면 팀 전술을 볼 수 있습니다.")
+
+    with load_tab2:
+        pub_strats = get_public_strategies()
+        for s in pub_strats:
+            if st.button(
+                f"🌐 {s.get('name', '?')} — {s.get('authorName', '')} ({s.get('teamName', '')})",
+                key=f"load_p_{s['id']}",
+                use_container_width=True,
+            ):
+                loaded = strategy_from_firestore(s)
+                st.session_state.strategy = loaded
+                st.session_state.current_phase_idx = 0
+                st.session_state.current_frame_idx = 0
+                st.session_state.firestore_strategy_id = s["id"]
+                st.rerun()
 
     st.divider()
 
@@ -422,8 +358,6 @@ with st.sidebar:
 
 
 # ===== MAIN CONTENT - TAB NAVIGATION =====
-st.session_state.firebase_ok = firebase_ok
-
 tab1, tab2, tab3, tab4 = st.tabs(["⚽ 전술 보드", "📚 전술 공유", "🏥 부상/병원", "📋 게시판"])
 
 with tab1:

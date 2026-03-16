@@ -131,7 +131,7 @@ def render_tactical_board_page():
     phase_idx = st.session_state.current_phase_idx
     frame_idx = st.session_state.current_frame_idx
     user = st.session_state.user
-    firebase_ok = st.session_state.get("firebase_ok", False)
+    firebase_ok = True  # 로컬 저장소 사용
 
     # Bounds check
     if phase_idx >= len(strategy.phases):
