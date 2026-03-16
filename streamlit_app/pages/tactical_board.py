@@ -131,7 +131,6 @@ def render_tactical_board_page():
     phase_idx = st.session_state.current_phase_idx
     frame_idx = st.session_state.current_frame_idx
     user = st.session_state.user
-    firebase_ok = True  # 로컬 저장소 사용
 
     # Bounds check
     if phase_idx >= len(strategy.phases):
@@ -568,7 +567,7 @@ def render_tactical_board_page():
                     p.position.z = nz
 
     # ===== SOCIAL SECTION =====
-    if firebase_ok and st.session_state.firestore_strategy_id:
+    if st.session_state.firestore_strategy_id:
         from services.social_service import add_comment, get_comments, delete_comment, toggle_like, has_liked
         import datetime
 
