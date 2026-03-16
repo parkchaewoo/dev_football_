@@ -75,27 +75,10 @@
 }
 </script>
 <script type="module">
-let THREE, OrbitControls;
-let __loadFailed = false;
-try {
-  THREE = await import('three');
-  const addons = await import('three/addons/controls/OrbitControls.js');
-  OrbitControls = addons.OrbitControls;
-  document.getElementById('loading').style.display = 'none';
-} catch (e1) {
-  // 폴백: unpkg CDN 시도
-  try {
-    THREE = await import('https://unpkg.com/three@0.164.0/build/three.module.js');
-    const addons = await import('https://unpkg.com/three@0.164.0/examples/jsm/controls/OrbitControls.js');
-    OrbitControls = addons.OrbitControls;
-    document.getElementById('loading').style.display = 'none';
-  } catch (e2) {
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('error-msg').style.display = 'block';
-    console.error("Three.js 로딩 실패:", e1, e2);
-    __loadFailed = true;
-  }
-}
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+document.getElementById('loading').style.display = 'none';
 
 // ===== STREAMLIT COMPONENT COMMUNICATION =====
 function sendMessageToStreamlit(type, data) {
@@ -110,13 +93,6 @@ function setFrameHeight(height) {
 function signalReady() {
   sendMessageToStreamlit("streamlit:componentReady", { apiVersion: 1 });
 }
-
-// CDN 로딩 실패 시: signalReady만 호출하고 초기화 중단
-if (__loadFailed) {
-  setFrameHeight(500);
-  signalReady();
-}
-if (__loadFailed) { throw new Error("Three.js unavailable"); }
 
 // ===== CONFIG =====
 const CW = 40, CH = 20;
