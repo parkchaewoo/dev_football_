@@ -173,18 +173,16 @@ def test_4_strategy_data_integrity(original_sid, imported_id):
     imported_doc = next(s for s in all_strats if s["id"] == imported_id)
     imp_strategy = strategy_from_firestore(imported_doc)
 
-    # 단계 수 비교
-    assert len(orig_strategy.phases) == len(imp_strategy.phases), "단계 수가 같아야 함"
-    print(f"  ✅ 단계 수 일치: {len(orig_strategy.phases)}")
+    # 프레임 수 비교
+    assert len(orig_strategy.frames) == len(imp_strategy.frames), "프레임 수가 같아야 함"
+    print(f"  ✅ 프레임 수 일치: {len(orig_strategy.frames)}")
 
     # 프레임 & 선수 위치 비교
-    for pi, (op, ip) in enumerate(zip(orig_strategy.phases, imp_strategy.phases)):
-        assert len(op.frames) == len(ip.frames), f"단계 {pi}: 프레임 수가 같아야 함"
-        for fi, (of, ifr) in enumerate(zip(op.frames, ip.frames)):
-            assert len(of.players) == len(ifr.players), f"프레임 {fi}: 선수 수가 같아야 함"
-            for pli, (opl, ipl) in enumerate(zip(of.players, ifr.players)):
-                assert opl.position.x == ipl.position.x, f"선수 {pli}: x좌표 불일치"
-                assert opl.position.z == ipl.position.z, f"선수 {pli}: z좌표 불일치"
+    for fi, (of, ifr) in enumerate(zip(orig_strategy.frames, imp_strategy.frames)):
+        assert len(of.players) == len(ifr.players), f"프레임 {fi}: 선수 수가 같아야 함"
+        for pli, (opl, ipl) in enumerate(zip(of.players, ifr.players)):
+            assert opl.position.x == ipl.position.x, f"선수 {pli}: x좌표 불일치"
+            assert opl.position.z == ipl.position.z, f"선수 {pli}: z좌표 불일치"
     print(f"  ✅ 모든 선수 위치 데이터 일치")
 
 
@@ -202,25 +200,25 @@ def test_5_seed_examples():
     print(f"  ✅ 공개 전술에서 예시 {len(seed_strats)}개 확인")
 
     for s in seed_strats:
-        phases = s.get("phases", [])
-        frame_count = sum(len(p.get("frames", [])) for p in phases)
-        print(f"     📋 {s['name']} — {len(phases)}단계 {frame_count}프레임")
+        # 새 포맷: frames 키 사용
+        frames = s.get("frames", [])
+        frame_count = len(frames)
+        print(f"     📋 {s['name']} — {frame_count}프레임")
 
     # 중복 실행 방지
     count2 = seed_example_strategies()
     assert count2 == 0, "이미 있으면 0 반환"
     print(f"  ✅ 중복 실행 시 0개 생성 (정상)")
 
-    # 프레임 수 검증 (최소 3프레임/단계)
+    # 프레임 수 검증 (최소 3프레임)
     for s in seed_strats:
-        phases = s.get("phases", [])
-        for p in phases:
-            fcount = len(p.get("frames", []))
-            assert fcount >= 3, f"'{s['name']}' 단계 '{p.get('name','')}': 프레임 {fcount}개 < 3개"
-    print(f"  ✅ 모든 예시 전술: 단계당 최소 3프레임 확인")
+        frames = s.get("frames", [])
+        fcount = len(frames)
+        assert fcount >= 3, f"'{s['name']}': 프레임 {fcount}개 < 3개"
+    print(f"  ✅ 모든 예시 전술: 최소 3프레임 확인")
 
     # seedVersion 확인
-    assert seed_strats[0].get("seedVersion", 0) >= 2, "seedVersion이 2 이상이어야 함"
+    assert seed_strats[0].get("seedVersion", 0) >= 3, "seedVersion이 3 이상이어야 함"
     print(f"  ✅ seedVersion: {seed_strats[0].get('seedVersion')}")
 
 

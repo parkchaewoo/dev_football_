@@ -18,9 +18,12 @@ def _render_strategy_card(s, idx, prefix, user, team, show_team_badge=True):
     description = s.get("description", "")
     likes_count = s.get("likesCount", 0)
     updated_ts = s.get("updatedAt", 0)
-    phases = s.get("phases", [])
-    frame_count = sum(len(p.get("frames", [])) for p in phases)
-    phase_count = len(phases)
+    # 프레임 수 계산 (신규: frames 키, 레거시: phases flatten)
+    if "frames" in s and isinstance(s.get("frames"), list):
+        frame_count = len(s["frames"])
+    else:
+        phases = s.get("phases", [])
+        frame_count = sum(len(p.get("frames", [])) for p in phases)
     visibility = s.get("visibility", "")
 
     date_str = ""
@@ -38,7 +41,7 @@ def _render_strategy_card(s, idx, prefix, user, team, show_team_badge=True):
             if show_team_badge and team_name:
                 meta += f" · 🏟️ {team_name}"
             meta += f" · 📅 {date_str}"
-            meta += f" · {phase_count}단계 {frame_count}프레임"
+            meta += f" · {frame_count}프레임"
             meta += f" · ♥ {likes_count}"
             st.caption(meta)
             if description:
@@ -60,7 +63,6 @@ def _render_strategy_card(s, idx, prefix, user, team, show_team_badge=True):
                 ):
                     loaded = strategy_from_firestore(s)
                     st.session_state.strategy = loaded
-                    st.session_state.current_phase_idx = 0
                     st.session_state.current_frame_idx = 0
                     st.session_state.firestore_strategy_id = None
                     st.session_state.strategy_readonly = True
@@ -87,7 +89,7 @@ def _render_strategy_card(s, idx, prefix, user, team, show_team_badge=True):
                         if new_id:
                             loaded.name = name
                             st.session_state.strategy = loaded
-                            st.session_state.current_phase_idx = 0
+        
                             st.session_state.current_frame_idx = 0
                             st.session_state.firestore_strategy_id = new_id
                             st.session_state.strategy_readonly = False
@@ -117,7 +119,7 @@ def _render_strategy_card(s, idx, prefix, user, team, show_team_badge=True):
                     if new_id:
                         loaded.name = name
                         st.session_state.strategy = loaded
-                        st.session_state.current_phase_idx = 0
+    
                         st.session_state.current_frame_idx = 0
                         st.session_state.firestore_strategy_id = new_id
                         st.session_state.strategy_readonly = False
@@ -128,7 +130,6 @@ def _render_strategy_card(s, idx, prefix, user, team, show_team_badge=True):
                 if st.button("👁️ 미리보기", key=f"{prefix}_preview_{strat_id}", use_container_width=True):
                     loaded = strategy_from_firestore(s)
                     st.session_state.strategy = loaded
-                    st.session_state.current_phase_idx = 0
                     st.session_state.current_frame_idx = 0
                     st.session_state.firestore_strategy_id = None
                     st.session_state.strategy_readonly = False
@@ -146,7 +147,6 @@ def _render_strategy_card(s, idx, prefix, user, team, show_team_badge=True):
                 ):
                     loaded = strategy_from_firestore(s)
                     st.session_state.strategy = loaded
-                    st.session_state.current_phase_idx = 0
                     st.session_state.current_frame_idx = 0
                     st.session_state.firestore_strategy_id = strat_id
                     st.session_state.strategy_readonly = False
@@ -169,7 +169,7 @@ def _render_strategy_card(s, idx, prefix, user, team, show_team_badge=True):
                         if new_id:
                             loaded.name = f"{name} (복사본)"
                             st.session_state.strategy = loaded
-                            st.session_state.current_phase_idx = 0
+        
                             st.session_state.current_frame_idx = 0
                             st.session_state.firestore_strategy_id = new_id
                             st.session_state.strategy_readonly = False

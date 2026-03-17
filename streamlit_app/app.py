@@ -2,9 +2,9 @@ import streamlit as st
 import json
 import copy
 from utils.models import (
-    create_default_strategy, create_default_phase,
+    create_default_strategy,
     strategy_to_json, strategy_from_json, strategy_from_firestore,
-    generate_id, Phase, Frame,
+    generate_id, Frame,
 )
 
 st.set_page_config(
@@ -17,8 +17,6 @@ st.set_page_config(
 # ===== SESSION STATE INIT =====
 if "strategy" not in st.session_state:
     st.session_state.strategy = create_default_strategy()
-if "current_phase_idx" not in st.session_state:
-    st.session_state.current_phase_idx = 0
 if "current_frame_idx" not in st.session_state:
     st.session_state.current_frame_idx = 0
 if "nickname" not in st.session_state:
@@ -180,26 +178,21 @@ if not st.session_state.current_team:
 
 # ===== MAIN APP =====
 strategy = st.session_state.strategy
-phase_idx = st.session_state.current_phase_idx
 frame_idx = st.session_state.current_frame_idx
 user = st.session_state.user
 team = st.session_state.current_team
 
 # Bounds check
-if phase_idx >= len(strategy.phases):
-    phase_idx = 0
-    st.session_state.current_phase_idx = 0
-current_phase = strategy.phases[phase_idx]
-if frame_idx >= len(current_phase.frames):
+if frame_idx >= len(strategy.frames):
     frame_idx = 0
     st.session_state.current_frame_idx = 0
-current_frame = current_phase.frames[frame_idx]
+current_frame = strategy.frames[frame_idx]
 
 # ===== SIDEBAR =====
 with st.sidebar:
     st.title("⚽ 풋살 전술 보드")
 
-    # User info
+    # User info + team invite code
     if user:
         col_user, col_logout = st.columns([3, 1])
         with col_user:
@@ -209,6 +202,12 @@ with st.sidebar:
             if st.button("↩", help="팀 목록으로"):
                 st.session_state.current_team = None
                 st.rerun()
+
+        # 팀 초대코드 표시
+        invite_code = team.get("inviteCode", "") if team else ""
+        if invite_code:
+            st.markdown(f"**초대코드**")
+            st.code(invite_code, language=None)
 
     st.divider()
 
@@ -241,7 +240,6 @@ with st.sidebar:
     with col1:
         if st.button("🆕 새 전략", use_container_width=True):
             st.session_state.strategy = create_default_strategy()
-            st.session_state.current_phase_idx = 0
             st.session_state.current_frame_idx = 0
             st.session_state.firestore_strategy_id = None
             st.session_state.strategy_readonly = False
@@ -287,7 +285,6 @@ with st.sidebar:
         try:
             loaded = strategy_from_json(uploaded.read().decode("utf-8"))
             st.session_state.strategy = loaded
-            st.session_state.current_phase_idx = 0
             st.session_state.current_frame_idx = 0
             st.session_state.firestore_strategy_id = None
             st.session_state.strategy_readonly = False
@@ -306,7 +303,6 @@ with st.sidebar:
         """사이드바에서 전술 로드 → 전술 보드 탭으로 전환."""
         loaded = strategy_from_firestore(s)
         st.session_state.strategy = loaded
-        st.session_state.current_phase_idx = 0
         st.session_state.current_frame_idx = 0
         st.session_state.firestore_strategy_id = s["id"]
         st.session_state.strategy_readonly = s.get("authorId") == "__seed__"
@@ -336,7 +332,6 @@ with st.sidebar:
             label = f"🌐 {s.get('name', '?')} — {s.get('authorName', '')} ({s.get('teamName', '')})"
 
             if is_other_team:
-                # 다른 팀 공개 전술: 2열(가져오기/미리보기)
                 btn_col1, btn_col2 = st.columns([3, 1])
                 with btn_col1:
                     if st.button(f"⚡ {s.get('name', '?')}", key=f"load_p_imp_{s['id']}", use_container_width=True):
@@ -351,7 +346,6 @@ with st.sidebar:
                         )
                         if new_id:
                             st.session_state.strategy = loaded
-                            st.session_state.current_phase_idx = 0
                             st.session_state.current_frame_idx = 0
                             st.session_state.firestore_strategy_id = new_id
                             st.session_state.active_tab = "⚽ 전술 보드"
@@ -361,7 +355,6 @@ with st.sidebar:
                     if st.button("👁️", key=f"load_p_pre_{s['id']}", use_container_width=True, help="미리보기 (저장 안 함)"):
                         loaded = strategy_from_firestore(s)
                         st.session_state.strategy = loaded
-                        st.session_state.current_phase_idx = 0
                         st.session_state.current_frame_idx = 0
                         st.session_state.firestore_strategy_id = None
                         st.session_state.active_tab = "⚽ 전술 보드"
@@ -369,60 +362,6 @@ with st.sidebar:
             else:
                 if st.button(label, key=f"load_p_{s['id']}", use_container_width=True):
                     _load_strategy_from_sidebar(s)
-
-    st.divider()
-
-    # Phase management
-    st.subheader("단계 관리")
-    phase_names = [f"{p.name}" for p in strategy.phases]
-    selected_phase = st.selectbox(
-        "현재 단계",
-        range(len(phase_names)),
-        format_func=lambda i: phase_names[i],
-        index=phase_idx,
-    )
-    if selected_phase != phase_idx:
-        st.session_state.current_phase_idx = selected_phase
-        st.session_state.current_frame_idx = 0
-        st.rerun()
-
-    phase_name = st.text_input(
-        "단계 이름",
-        value=current_phase.name,
-        key="phase_name_input",
-        disabled=_readonly,
-    )
-    if phase_name != current_phase.name and not _readonly:
-        current_phase.name = phase_name
-
-    col_a, col_b = st.columns(2)
-    with col_a:
-        if st.button("➕ 단계 추가", use_container_width=True, disabled=_readonly):
-            last_phase = strategy.phases[-1]
-            last_frame = last_phase.frames[-1]
-            new_phase = Phase(
-                id=generate_id(),
-                name=f"{len(strategy.phases) + 1}단계",
-                description="",
-                frames=[Frame(
-                    id=generate_id(),
-                    players=copy.deepcopy(last_frame.players),
-                    ball_position=copy.deepcopy(last_frame.ball_position),
-                )],
-                order=len(strategy.phases),
-            )
-            strategy.phases.append(new_phase)
-            st.session_state.current_phase_idx = len(strategy.phases) - 1
-            st.session_state.current_frame_idx = 0
-            st.rerun()
-    with col_b:
-        if len(strategy.phases) > 1:
-            if st.button("🗑️ 단계 삭제", use_container_width=True, disabled=_readonly):
-                strategy.phases.pop(phase_idx)
-                st.session_state.current_phase_idx = min(phase_idx, len(strategy.phases) - 1)
-                st.session_state.current_frame_idx = 0
-                st.rerun()
-
 
 
 # ===== MAIN CONTENT - TAB NAVIGATION =====

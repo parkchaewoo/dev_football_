@@ -30,10 +30,12 @@ class Frame:
     id: str = ""
     players: List[Player] = field(default_factory=list)
     ball_position: Position3D = field(default_factory=lambda: Position3D(0, 0, 0))
-    ball_peak_height: float = 0.0  # 프레임 간 공 최고 높이 (롭볼 궤적)
-    ball_trajectory: str = "linear"  # "linear" (직선) or "parabolic" (롭볼)
+    ball_peak_height: float = 0.0
+    ball_trajectory: str = "linear"  # "linear" or "parabolic"
+    label: str = ""  # optional section label, e.g. "공격 시작"
 
 
+# Deprecated: kept for backward-compatible loading only
 @dataclass
 class Phase:
     id: str = ""
@@ -48,7 +50,7 @@ class Strategy:
     id: str = ""
     name: str = ""
     description: str = ""
-    phases: List[Phase] = field(default_factory=list)
+    frames: List[Frame] = field(default_factory=list)
     created_at: float = 0.0
 
 
@@ -69,26 +71,16 @@ def create_default_players() -> List[Player]:
     return players
 
 
-def create_default_phase() -> Phase:
-    return Phase(
+def create_default_strategy() -> Strategy:
+    return Strategy(
         id=generate_id(),
-        name="1단계",
+        name="",
         description="",
         frames=[Frame(
             id=generate_id(),
             players=create_default_players(),
             ball_position=Position3D(0, 0, 0),
         )],
-        order=0,
-    )
-
-
-def create_default_strategy() -> Strategy:
-    return Strategy(
-        id=generate_id(),
-        name="",
-        description="",
-        phases=[create_default_phase()],
         created_at=time.time(),
     )
 
@@ -97,60 +89,68 @@ def strategy_to_json(strategy: Strategy) -> str:
     return json.dumps(asdict(strategy), ensure_ascii=False, indent=2)
 
 
+def _parse_frame_dict(f: dict) -> Frame:
+    """단일 프레임 dict → Frame 객체."""
+    players = []
+    for pl in f.get("players", []):
+        pos = pl.get("position", {})
+        players.append(Player(
+            pl.get("id", ""),
+            pl.get("team", "home"),
+            pl.get("number", 1),
+            Position3D(pos.get("x", 0), pos.get("y", 0), pos.get("z", 0)),
+        ))
+    bp = f.get("ball_position", f.get("ballPosition", {}))
+    return Frame(
+        f.get("id", generate_id()),
+        players,
+        Position3D(bp.get("x", 0), bp.get("y", 0.22), bp.get("z", 0)),
+        f.get("ball_peak_height", f.get("ballPeakHeight", 0.0)),
+        f.get("ball_trajectory", f.get("ballTrajectory", "linear")),
+        f.get("label", ""),
+    )
+
+
+def _parse_frames(data: dict) -> List[Frame]:
+    """전략 dict에서 프레임 리스트 추출. phases(레거시) / frames(신규) 양쪽 지원."""
+    if "frames" in data and isinstance(data["frames"], list) and data["frames"]:
+        # 새 포맷: 프레임 직접
+        return [_parse_frame_dict(f) for f in data["frames"]]
+
+    # 레거시 포맷: phases → flatten
+    frames = []
+    phases = data.get("phases", [])
+    # order로 정렬
+    phases_sorted = sorted(phases, key=lambda p: p.get("order", 0))
+    for p in phases_sorted:
+        phase_frames = p.get("frames", [])
+        for i, f in enumerate(phase_frames):
+            frame = _parse_frame_dict(f)
+            if i == 0 and p.get("name"):
+                frame.label = p["name"]
+            frames.append(frame)
+    return frames
+
+
 def strategy_from_json(json_str: str) -> Strategy:
     data = json.loads(json_str)
-    phases = []
-    for p in data.get("phases", []):
-        frames = []
-        for f in p.get("frames", []):
-            players = [
-                Player(
-                    pl["id"], pl["team"], pl["number"],
-                    Position3D(**pl["position"])
-                ) for pl in f.get("players", [])
-            ]
-            frames.append(Frame(f["id"], players, Position3D(**f["ball_position"]), f.get("ball_peak_height", 0.0), f.get("ball_trajectory", "linear")))
-        phases.append(Phase(p["id"], p["name"], p["description"], frames, p["order"]))
+    frames = _parse_frames(data)
     return Strategy(
-        data["id"], data["name"], data["description"],
-        phases, data.get("created_at", time.time())
+        data.get("id", generate_id()),
+        data.get("name", ""),
+        data.get("description", ""),
+        frames,
+        data.get("created_at", time.time()),
     )
 
 
 def strategy_from_firestore(data: dict) -> Strategy:
     """Firestore 문서 데이터에서 Strategy 객체 생성."""
-    phases = []
-    for p in data.get("phases", []):
-        frames = []
-        for f in p.get("frames", []):
-            players = []
-            for pl in f.get("players", []):
-                pos = pl.get("position", {})
-                players.append(Player(
-                    pl.get("id", ""),
-                    pl.get("team", "home"),
-                    pl.get("number", 1),
-                    Position3D(pos.get("x", 0), pos.get("y", 0), pos.get("z", 0)),
-                ))
-            bp = f.get("ball_position", f.get("ballPosition", {}))
-            frames.append(Frame(
-                f.get("id", generate_id()),
-                players,
-                Position3D(bp.get("x", 0), bp.get("y", 0.22), bp.get("z", 0)),
-                f.get("ball_peak_height", f.get("ballPeakHeight", 0.0)),
-                f.get("ball_trajectory", f.get("ballTrajectory", "linear")),
-            ))
-        phases.append(Phase(
-            p.get("id", generate_id()),
-            p.get("name", ""),
-            p.get("description", ""),
-            frames,
-            p.get("order", 0),
-        ))
+    frames = _parse_frames(data)
     return Strategy(
         data.get("id", generate_id()),
         data.get("name", ""),
         data.get("description", ""),
-        phases,
+        frames,
         data.get("created_at", data.get("createdAt", time.time())),
     )

@@ -1,9 +1,9 @@
-"""전술 보드 페이지 - 3D 전술 보드, 프레임/단계 관리, 소셜 기능."""
+"""전술 보드 페이지 - 3D 전술 보드, 프레임 관리, 소셜 기능."""
 import streamlit as st
 import json
 import copy
 from utils.models import (
-    generate_id, Position3D, Frame, Phase, Player,
+    generate_id, Position3D, Frame, Player,
 )
 from components.tactical_board import tactical_board_component
 
@@ -19,7 +19,7 @@ def _away_defaults():
     ]
 
 
-def _load_example_onetwo(strategy, phase_idx):
+def _load_example_onetwo(strategy):
     """예시 1: 킥오프 원투패스 (3프레임)."""
     away = _away_defaults()
     f1 = Frame(generate_id(), [
@@ -48,11 +48,10 @@ def _load_example_onetwo(strategy, phase_idx):
     ]
     f3 = Frame(generate_id(), f3_home + copy.deepcopy(away), Position3D(6, 0, -3))
 
-    phase = Phase(generate_id(), "원투패스", "킥오프 원투패스 예시", [f1, f2, f3], 0)
-    strategy.phases[phase_idx] = phase
+    strategy.frames = [f1, f2, f3]
 
 
-def _load_example_corner(strategy, phase_idx):
+def _load_example_corner(strategy):
     """예시 2: 코너킥 롭볼 (2프레임)."""
     away = [
         Player("a1", "away", 1, Position3D(19, 0, 0)),
@@ -77,22 +76,21 @@ def _load_example_corner(strategy, phase_idx):
         Player("h5", "home", 10, Position3D(19, 0, -8)),
     ] + copy.deepcopy(away), Position3D(16, 0, -2), 4.0, "parabolic")
 
-    phase = Phase(generate_id(), "코너킥", "코너킥 롭볼 예시", [f1, f2], 0)
-    strategy.phases[phase_idx] = phase
+    strategy.frames = [f1, f2]
 
 
 def _load_example_transition(strategy):
-    """예시 3: 수비→공격 전환 (2단계)."""
+    """예시 3: 수비→공격 전환 (4프레임)."""
     away = _away_defaults()
 
-    # 1단계: 수비 대형 (1-2-1)
+    # 수비 대형 (1-2-1)
     df1 = Frame(generate_id(), [
         Player("h1", "home", 1, Position3D(-19, 0, 0)),
         Player("h2", "home", 2, Position3D(-12, 0, -5)),
         Player("h3", "home", 3, Position3D(-12, 0, 5)),
         Player("h4", "home", 4, Position3D(-6, 0, 0)),
         Player("h5", "home", 5, Position3D(-14, 0, 0)),
-    ] + copy.deepcopy(away), Position3D(-4, 0, 0))
+    ] + copy.deepcopy(away), Position3D(-4, 0, 0), label="수비 대형")
 
     df2 = Frame(generate_id(), [
         Player("h1", "home", 1, Position3D(-19, 0, 0)),
@@ -102,16 +100,14 @@ def _load_example_transition(strategy):
         Player("h5", "home", 5, Position3D(-13, 0, 0)),
     ] + copy.deepcopy(away), Position3D(-5, 0, 1))
 
-    phase1 = Phase(generate_id(), "수비 대형", "1-2-1 수비 배치", [df1, df2], 0)
-
-    # 2단계: 역습 전환
+    # 역습 전환
     af1 = Frame(generate_id(), [
         Player("h1", "home", 1, Position3D(-19, 0, 0)),
         Player("h2", "home", 2, Position3D(-10, 0, -4)),
         Player("h3", "home", 3, Position3D(-10, 0, 4)),
         Player("h4", "home", 4, Position3D(-2, 0, 0)),
         Player("h5", "home", 5, Position3D(-6, 0, 3)),
-    ] + copy.deepcopy(away), Position3D(-2, 0, 0))
+    ] + copy.deepcopy(away), Position3D(-2, 0, 0), label="역습 전환")
 
     af2 = Frame(generate_id(), [
         Player("h1", "home", 1, Position3D(-19, 0, 0)),
@@ -121,26 +117,19 @@ def _load_example_transition(strategy):
         Player("h5", "home", 5, Position3D(4, 0, 4)),
     ] + copy.deepcopy(away), Position3D(6, 0, 1))
 
-    phase2 = Phase(generate_id(), "역습 전환", "수비에서 공격으로", [af1, af2], 1)
-
-    strategy.phases = [phase1, phase2]
+    strategy.frames = [df1, df2, af1, af2]
 
 
 def render_tactical_board_page():
     strategy = st.session_state.strategy
-    phase_idx = st.session_state.current_phase_idx
     frame_idx = st.session_state.current_frame_idx
     user = st.session_state.user
 
     # Bounds check
-    if phase_idx >= len(strategy.phases):
-        phase_idx = 0
-        st.session_state.current_phase_idx = 0
-    current_phase = strategy.phases[phase_idx]
-    if frame_idx >= len(current_phase.frames):
+    if frame_idx >= len(strategy.frames):
         frame_idx = 0
         st.session_state.current_frame_idx = 0
-    current_frame = current_phase.frames[frame_idx]
+    current_frame = strategy.frames[frame_idx]
 
     # Frame-key prefix to prevent Streamlit widget state caching across frames
     fk = f"f{frame_idx}_"
@@ -220,7 +209,7 @@ def render_tactical_board_page():
 **진행 방법**: 프레임 1에서 공을 #10 앞에 배치 → 프레임 추가 후 공을 #7에게, #10을 전방으로 → 프레임 추가 후 공을 #10 앞으로
 """)
             if st.button("📥 이 예시 불러오기", key="load_ex1"):
-                _load_example_onetwo(strategy, phase_idx)
+                _load_example_onetwo(strategy)
                 st.session_state.current_frame_idx = 0
                 st.rerun()
             st.divider()
@@ -257,17 +246,17 @@ def render_tactical_board_page():
 **진행 방법**: 공을 코너에 배치 → 프레임 추가 → 공 궤적을 **롭볼**로, 높이 **4.0m** → 공을 니어포스트로, ⑤를 해당 위치로 이동
 """)
             if st.button("📥 이 예시 불러오기", key="load_ex2"):
-                _load_example_corner(strategy, phase_idx)
+                _load_example_corner(strategy)
                 st.session_state.current_frame_idx = 0
                 st.rerun()
             st.divider()
 
-            st.markdown("#### 예시 3: 단계 기능으로 수비→공격 전환")
-            st.markdown("> 수비 대형과 공격 전환을 '단계'로 나눠 관리합니다.")
+            st.markdown("#### 예시 3: 수비→공격 전환")
+            st.markdown("> 수비 대형에서 역습으로 전환하는 전술입니다. 프레임 라벨로 구간을 표시합니다.")
 
             ex3_c1, ex3_c2 = st.columns(2)
             with ex3_c1:
-                st.caption("1단계: 수비 대형 (1-2-1)")
+                st.caption("프레임 1~2: 수비 대형 (1-2-1)")
                 st.code(
                     "┌───── GOAL ─────┐\n"
                     "│                │\n"
@@ -279,7 +268,7 @@ def render_tactical_board_page():
                     language=None,
                 )
             with ex3_c2:
-                st.caption("2단계: 역습 전환")
+                st.caption("프레임 3~4: 역습 전환")
                 st.code(
                     "┌───── GOAL ─────┐\n"
                     "│          ⑤→   │\n"
@@ -291,11 +280,10 @@ def render_tactical_board_page():
                     language=None,
                 )
             st.markdown("""
-**진행 방법**: 1단계에서 수비 대형 배치 → 사이드바에서 **➕ 단계 추가** → 2단계에서 역습 동선을 프레임으로 그리기
+**진행 방법**: 프레임 1~2에서 수비 대형 배치 → 프레임 3~4에서 역습 동선 그리기. 첫 프레임에 라벨을 붙이면 구간을 구분할 수 있습니다.
 """)
             if st.button("📥 이 예시 불러오기", key="load_ex3"):
                 _load_example_transition(strategy)
-                st.session_state.current_phase_idx = 0
                 st.session_state.current_frame_idx = 0
                 st.rerun()
             st.divider()
@@ -320,7 +308,7 @@ def render_tactical_board_page():
 - **정밀 배치**: 드래그가 어려우면 아래 **좌표 입력**란에서 숫자로 정확히 지정하세요
 - **3D로 확인**: 더블클릭으로 3D 시점 전환 후 선수 간격과 깊이감을 확인하세요
 - **프레임 복사 활용**: 프레임 추가 시 현재 배치가 그대로 복사됩니다. 조금씩 이동시키면 자연스러운 움직임이 됩니다
-- **단계 나누기**: 공격/수비/세트피스 등 상황별로 단계를 나누면 정리가 쉽습니다
+- **라벨로 구간 표시**: 프레임에 라벨(예: "수비", "공격")을 붙이면 구간을 쉽게 구분할 수 있습니다
 - **JSON 백업**: 사이드바 **💾 JSON 저장**으로 로컬에 백업해두면 안전합니다
 - **롭볼 높이**: 로브패스 2~4m, 슈팅 1~2m, 프리킥 5~7m이 현실적입니다
 """)
@@ -335,7 +323,7 @@ def render_tactical_board_page():
 
     with frame_col1:
         if st.button("+ 프레임 추가", key="tb_add_frame", disabled=_readonly):
-            cur_frame = current_phase.frames[frame_idx]
+            cur_frame = strategy.frames[frame_idx]
             new_frame = Frame(
                 id=generate_id(),
                 players=copy.deepcopy(cur_frame.players),
@@ -343,25 +331,30 @@ def render_tactical_board_page():
                 ball_peak_height=0.0,
                 ball_trajectory="linear",
             )
-            current_phase.frames.insert(frame_idx + 1, new_frame)
+            strategy.frames.insert(frame_idx + 1, new_frame)
             st.session_state.current_frame_idx = frame_idx + 1
             st.rerun()
 
     with frame_col2:
-        if len(current_phase.frames) > 1:
+        if len(strategy.frames) > 1:
             if st.button("- 프레임 삭제", key="tb_del_frame", disabled=_readonly):
-                current_phase.frames.pop(frame_idx)
-                new_idx = min(frame_idx, len(current_phase.frames) - 1)
+                strategy.frames.pop(frame_idx)
+                new_idx = min(frame_idx, len(strategy.frames) - 1)
                 st.session_state.current_frame_idx = new_idx
                 st.rerun()
 
     with frame_col3:
-        frame_options = [f"프레임 {i+1}" for i in range(len(current_phase.frames))]
+        frame_options = []
+        for i, f in enumerate(strategy.frames):
+            label = f"프레임 {i+1}"
+            if f.label:
+                label += f" [{f.label}]"
+            frame_options.append(label)
         sel_frame = st.selectbox(
             "프레임", frame_options,
             index=frame_idx,
             label_visibility="collapsed",
-            key=f"tb_frame_sel_{len(current_phase.frames)}",
+            key=f"tb_frame_sel_{len(strategy.frames)}",
         )
         sel_idx = frame_options.index(sel_frame) if sel_frame in frame_options else 0
         if sel_idx != frame_idx:
@@ -369,7 +362,7 @@ def render_tactical_board_page():
             st.rerun()
 
     with frame_col4:
-        can_play = len(current_phase.frames) >= 2
+        can_play = len(strategy.frames) >= 2
         play_label = "▶ 전체 재생" if can_play else "(2프레임 이상)"
         is_playing = st.button(play_label, disabled=not can_play, key="tb_play")
 
@@ -377,7 +370,7 @@ def render_tactical_board_page():
     if is_playing:
         st.session_state.current_frame_idx = 0
         frame_idx = 0
-        current_frame = current_phase.frames[0]
+        current_frame = strategy.frames[0]
         fk = "f0_"
 
     with frame_col5:
@@ -397,7 +390,7 @@ def render_tactical_board_page():
             st.caption("⚽ 지면")
 
     # Ball trajectory and peak height controls (when 2+ frames)
-    if len(current_phase.frames) >= 2:
+    if len(strategy.frames) >= 2:
         traj_col1, traj_col2, traj_col3 = st.columns([3, 3, 6])
         with traj_col1:
             trajectory_options = ["일반 (직선)", "롭볼"]
@@ -438,7 +431,7 @@ def render_tactical_board_page():
     # Prepare frames data for animation (minimal data to reduce memory)
     frames_for_js = []
     if is_playing:
-        for f in current_phase.frames:
+        for f in strategy.frames:
             frames_for_js.append({
                 "players": [
                     {"id": p.id, "position": {"x": p.position.x, "z": p.position.z}}
@@ -459,9 +452,6 @@ def render_tactical_board_page():
     )
 
     # Apply drag/animation-end positions to session state.
-    # Skip during playback — the cached drag_result from a previous drag
-    # must not interfere. The animation sends its own result when it ends.
-    # Only rerun if positions actually changed to avoid infinite loops.
     if drag_result and not is_playing and not _readonly:
         changed = False
 
@@ -484,13 +474,15 @@ def render_tactical_board_page():
         if changed:
             st.rerun()
 
-    # Info
-    st.caption(
-        f"📋 {strategy.name or '(이름 없음)'} | "
-        f"📍 {current_phase.name} | "
-        f"🎞️ 프레임 {frame_idx + 1}/{len(current_phase.frames)} | "
-        f"⚽ 공 높이: {'지면' if ball_h <= 0.3 else f'{ball_h:.1f}m'}"
-    )
+    # Info caption
+    caption_parts = [
+        f"📋 {strategy.name or '(이름 없음)'}",
+        f"🎞️ 프레임 {frame_idx + 1}/{len(strategy.frames)}",
+    ]
+    if current_frame.label:
+        caption_parts.insert(1, f"📍 {current_frame.label}")
+    caption_parts.append(f"⚽ 공 높이: {'지면' if ball_h <= 0.3 else f'{ball_h:.1f}m'}")
+    st.caption(" | ".join(caption_parts))
 
     # ===== POSITION EDITOR =====
     if _readonly:

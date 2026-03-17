@@ -68,6 +68,14 @@ def render_admin_manage_page():
     if not team_data:
         team_data = team
 
+    # 팀 정보 표시
+    team_name_display = team_data.get("name", team.get("name", ""))
+    invite_code = team_data.get("inviteCode", "")
+    if team_name_display:
+        st.info(f"🏟️ {team_name_display}" + (f" · 초대코드: **{invite_code}**" if invite_code else ""))
+    if invite_code:
+        st.code(invite_code, language=None)
+
     # 리더만 접근 가능
     if team_data.get("leaderId") != user["uid"]:
         st.warning("팀 리더만 데이터를 관리할 수 있습니다.")

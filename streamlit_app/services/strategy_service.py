@@ -22,7 +22,7 @@ def save_strategy(
         "teamId": team_id,
         "teamName": team_name,
         "visibility": visibility,
-        "phases": strategy_dict.get("phases", []),
+        "frames": strategy_dict.get("frames", []),
         "updatedAt": int(time.time() * 1000),
     }
 
