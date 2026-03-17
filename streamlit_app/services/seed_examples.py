@@ -446,15 +446,25 @@ _ALL_EXAMPLES = [
 ]
 
 
+_SEED_VERSION = 2  # 시드 데이터 버전 — 프레임 수정 시 올려주세요
+
+
 def seed_example_strategies() -> int:
-    """예시 전술이 없으면 생성. 반환: 새로 생성된 수."""
+    """예시 전술이 없거나 버전이 낮으면 (재)생성. 반환: 새로 생성된 수."""
     existing = local_store.query("strategies", [("authorId", "==", "__seed__")])
+
     if existing:
-        return 0
+        # 버전 확인 — 오래된 시드면 삭제 후 재생성
+        first = existing[0]
+        if first.get("seedVersion", 0) >= _SEED_VERSION:
+            return 0
+        for doc in existing:
+            local_store.delete_doc("strategies", doc["id"])
 
     count = 0
     for factory in _ALL_EXAMPLES:
         data = factory()
+        data["seedVersion"] = _SEED_VERSION
         local_store.add_doc("strategies", data)
         count += 1
     return count

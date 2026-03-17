@@ -325,11 +325,16 @@ def render_tactical_board_page():
 - **롭볼 높이**: 로브패스 2~4m, 슈팅 1~2m, 프리킥 5~7m이 현실적입니다
 """)
 
+    # ===== Read-only mode (예시 전술) =====
+    _readonly = st.session_state.get("strategy_readonly", False)
+    if _readonly:
+        st.info("🔒 예시 전술은 읽기 전용입니다. 수정하려면 갤러리에서 '⚡ 우리 팀에 가져오기'를 사용하세요.")
+
     # ===== Frame controls =====
     frame_col1, frame_col2, frame_col3, frame_col4, frame_col5 = st.columns([2, 2, 2, 2, 4])
 
     with frame_col1:
-        if st.button("+ 프레임 추가", key="tb_add_frame"):
+        if st.button("+ 프레임 추가", key="tb_add_frame", disabled=_readonly):
             cur_frame = current_phase.frames[frame_idx]
             new_frame = Frame(
                 id=generate_id(),
@@ -344,7 +349,7 @@ def render_tactical_board_page():
 
     with frame_col2:
         if len(current_phase.frames) > 1:
-            if st.button("- 프레임 삭제", key="tb_del_frame"):
+            if st.button("- 프레임 삭제", key="tb_del_frame", disabled=_readonly):
                 current_phase.frames.pop(frame_idx)
                 new_idx = min(frame_idx, len(current_phase.frames) - 1)
                 st.session_state.current_frame_idx = new_idx
@@ -403,9 +408,10 @@ def render_tactical_board_page():
                 trajectory_options,
                 index=traj_idx,
                 key=fk + "ball_traj",
+                disabled=_readonly,
             )
             new_traj = "linear" if traj_sel == "일반 (직선)" else "parabolic"  # 롭볼 = parabolic
-            if new_traj != current_traj:
+            if new_traj != current_traj and not _readonly:
                 current_frame.ball_trajectory = new_traj
                 st.rerun()
 
@@ -456,7 +462,7 @@ def render_tactical_board_page():
     # Skip during playback — the cached drag_result from a previous drag
     # must not interfere. The animation sends its own result when it ends.
     # Only rerun if positions actually changed to avoid infinite loops.
-    if drag_result and not is_playing:
+    if drag_result and not is_playing and not _readonly:
         changed = False
 
         for dp in drag_result.get("players", []):
@@ -487,7 +493,9 @@ def render_tactical_board_page():
     )
 
     # ===== POSITION EDITOR =====
-    with st.expander("📍 선수/공 위치 정밀 편집 (드래그 대신 좌표 입력)", expanded=True):
+    if _readonly:
+        st.caption("🔒 읽기 전용 — 위치 편집이 비활성화되어 있습니다.")
+    with st.expander("📍 선수/공 위치 정밀 편집 (드래그 대신 좌표 입력)", expanded=not _readonly, disabled=_readonly):
         st.caption("아래에서 정밀 좌표를 수정하면 3D 보드에 즉시 반영됩니다.")
 
         st.markdown("**⚽ 공 위치**")

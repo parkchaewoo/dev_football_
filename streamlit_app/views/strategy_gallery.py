@@ -48,9 +48,55 @@ def _render_strategy_card(s, idx, prefix, user, team, show_team_badge=True):
             my_team_id = team.get("id", "") if team else ""
             strat_team_id = s.get("teamId", "")
             is_other_team = my_team_id and strat_team_id != my_team_id
+            is_seed = author_id == "__seed__"
+
+            # === 예시 전술(시드): 미리보기 + 가져오기만 ===
+            if is_seed:
+                if st.button(
+                    "👁️ 미리보기",
+                    key=f"{prefix}_preview_{strat_id}",
+                    use_container_width=True,
+                    type="primary",
+                ):
+                    loaded = strategy_from_firestore(s)
+                    st.session_state.strategy = loaded
+                    st.session_state.current_phase_idx = 0
+                    st.session_state.current_frame_idx = 0
+                    st.session_state.firestore_strategy_id = None
+                    st.session_state.strategy_readonly = True
+                    st.session_state.active_tab = "⚽ 전술 보드"
+                    st.rerun()
+
+                if my_team_id:
+                    if st.button(
+                        "⚡ 우리 팀에 가져오기",
+                        key=f"{prefix}_import_{strat_id}",
+                        use_container_width=True,
+                    ):
+                        loaded = strategy_from_firestore(s)
+                        strategy_dict = json.loads(strategy_to_json(loaded))
+                        strategy_dict["name"] = name
+                        new_id = save_strategy(
+                            strategy_dict,
+                            user["uid"],
+                            user["displayName"],
+                            my_team_id,
+                            team.get("name", ""),
+                            "team",
+                        )
+                        if new_id:
+                            loaded.name = name
+                            st.session_state.strategy = loaded
+                            st.session_state.current_phase_idx = 0
+                            st.session_state.current_frame_idx = 0
+                            st.session_state.firestore_strategy_id = new_id
+                            st.session_state.strategy_readonly = False
+                            st.session_state.active_tab = "⚽ 전술 보드"
+                            st.toast(f"✅ '{name}' → 우리 팀에 저장 완료!")
+                            st.rerun()
 
             # === 다른 팀 전술: 원클릭 가져오기가 메인 ===
-            if is_other_team:
+            elif is_other_team:
                 if st.button(
                     "⚡ 우리 팀에 가져오기",
                     key=f"{prefix}_import_{strat_id}",
@@ -59,7 +105,7 @@ def _render_strategy_card(s, idx, prefix, user, team, show_team_badge=True):
                 ):
                     loaded = strategy_from_firestore(s)
                     strategy_dict = json.loads(strategy_to_json(loaded))
-                    strategy_dict["name"] = name  # 원본 이름 유지
+                    strategy_dict["name"] = name
                     new_id = save_strategy(
                         strategy_dict,
                         user["uid"],
@@ -69,15 +115,26 @@ def _render_strategy_card(s, idx, prefix, user, team, show_team_badge=True):
                         "team",
                     )
                     if new_id:
-                        # 저장 + 에디터에 로드 + 전술보드 전환
                         loaded.name = name
                         st.session_state.strategy = loaded
                         st.session_state.current_phase_idx = 0
                         st.session_state.current_frame_idx = 0
                         st.session_state.firestore_strategy_id = new_id
+                        st.session_state.strategy_readonly = False
                         st.session_state.active_tab = "⚽ 전술 보드"
                         st.toast(f"✅ '{name}' → 우리 팀에 저장 완료!")
                         st.rerun()
+
+                if st.button("👁️ 미리보기", key=f"{prefix}_preview_{strat_id}", use_container_width=True):
+                    loaded = strategy_from_firestore(s)
+                    st.session_state.strategy = loaded
+                    st.session_state.current_phase_idx = 0
+                    st.session_state.current_frame_idx = 0
+                    st.session_state.firestore_strategy_id = None
+                    st.session_state.strategy_readonly = False
+                    st.session_state.active_tab = "⚽ 전술 보드"
+                    st.toast(f"👁️ '{name}' 미리보기 — 저장하려면 사이드바에서 저장하세요")
+                    st.rerun()
 
             # === 같은 팀 또는 팀 없음: 불러오기가 메인 ===
             else:
@@ -92,43 +149,32 @@ def _render_strategy_card(s, idx, prefix, user, team, show_team_badge=True):
                     st.session_state.current_phase_idx = 0
                     st.session_state.current_frame_idx = 0
                     st.session_state.firestore_strategy_id = strat_id
+                    st.session_state.strategy_readonly = False
                     st.session_state.active_tab = "⚽ 전술 보드"
                     st.rerun()
 
-            # 미리보기 (다른 팀일 때만 — 저장 없이 에디터로)
-            if is_other_team:
-                if st.button("👁️ 미리보기", key=f"{prefix}_preview_{strat_id}", use_container_width=True):
-                    loaded = strategy_from_firestore(s)
-                    st.session_state.strategy = loaded
-                    st.session_state.current_phase_idx = 0
-                    st.session_state.current_frame_idx = 0
-                    st.session_state.firestore_strategy_id = None
-                    st.session_state.active_tab = "⚽ 전술 보드"
-                    st.toast(f"👁️ '{name}' 미리보기 — 저장하려면 사이드바에서 저장하세요")
-                    st.rerun()
-
-            # 복사 (같은 팀 전술을 복제할 때)
-            if not is_other_team and strat_team_id:
-                if st.button("📋 복사", key=f"{prefix}_fork_{strat_id}", use_container_width=True):
-                    loaded = strategy_from_firestore(s)
-                    strategy_dict = json.loads(strategy_to_json(loaded))
-                    strategy_dict["name"] = f"{name} (복사본)"
-                    new_id = save_strategy(
-                        strategy_dict,
-                        user["uid"],
-                        user["displayName"],
-                        my_team_id,
-                        team.get("name", ""),
-                        "team",
-                    )
-                    if new_id:
-                        loaded.name = f"{name} (복사본)"
-                        st.session_state.strategy = loaded
-                        st.session_state.current_phase_idx = 0
-                        st.session_state.current_frame_idx = 0
-                        st.session_state.firestore_strategy_id = new_id
-                        st.toast(f"📋 '{name}' 복사 완료!")
-                        st.rerun()
+                if strat_team_id:
+                    if st.button("📋 복사", key=f"{prefix}_fork_{strat_id}", use_container_width=True):
+                        loaded = strategy_from_firestore(s)
+                        strategy_dict = json.loads(strategy_to_json(loaded))
+                        strategy_dict["name"] = f"{name} (복사본)"
+                        new_id = save_strategy(
+                            strategy_dict,
+                            user["uid"],
+                            user["displayName"],
+                            my_team_id,
+                            team.get("name", ""),
+                            "team",
+                        )
+                        if new_id:
+                            loaded.name = f"{name} (복사본)"
+                            st.session_state.strategy = loaded
+                            st.session_state.current_phase_idx = 0
+                            st.session_state.current_frame_idx = 0
+                            st.session_state.firestore_strategy_id = new_id
+                            st.session_state.strategy_readonly = False
+                            st.toast(f"📋 '{name}' 복사 완료!")
+                            st.rerun()
 
             # Like button
             liked = has_liked(strat_id, user["uid"])

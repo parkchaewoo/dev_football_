@@ -211,6 +211,18 @@ def test_5_seed_examples():
     assert count2 == 0, "이미 있으면 0 반환"
     print(f"  ✅ 중복 실행 시 0개 생성 (정상)")
 
+    # 프레임 수 검증 (최소 3프레임/단계)
+    for s in seed_strats:
+        phases = s.get("phases", [])
+        for p in phases:
+            fcount = len(p.get("frames", []))
+            assert fcount >= 3, f"'{s['name']}' 단계 '{p.get('name','')}': 프레임 {fcount}개 < 3개"
+    print(f"  ✅ 모든 예시 전술: 단계당 최소 3프레임 확인")
+
+    # seedVersion 확인
+    assert seed_strats[0].get("seedVersion", 0) >= 2, "seedVersion이 2 이상이어야 함"
+    print(f"  ✅ seedVersion: {seed_strats[0].get('seedVersion')}")
+
 
 def test_6_seed_import_to_team(user_b, team_b):
     """예시 전술을 팀B로 가져오기."""

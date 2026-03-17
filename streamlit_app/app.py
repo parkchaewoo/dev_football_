@@ -31,6 +31,8 @@ if "firestore_strategy_id" not in st.session_state:
     st.session_state.firestore_strategy_id = None
 if "active_tab" not in st.session_state:
     st.session_state.active_tab = "⚽ 전술 보드"
+if "strategy_readonly" not in st.session_state:
+    st.session_state.strategy_readonly = False
 
 # ===== SEED EXAMPLE STRATEGIES =====
 if "examples_seeded" not in st.session_state:
@@ -211,13 +213,18 @@ with st.sidebar:
     st.divider()
 
     # Strategy management
+    _readonly = st.session_state.get("strategy_readonly", False)
+    if _readonly:
+        st.warning("🔒 예시 전술 (읽기 전용)")
+
     st.subheader("전략 관리")
     strategy_name = st.text_input(
         "전략 이름",
         value=strategy.name,
-        placeholder="전략 이름을 입력하세요"
+        placeholder="전략 이름을 입력하세요",
+        disabled=_readonly,
     )
-    if strategy_name != strategy.name:
+    if strategy_name != strategy.name and not _readonly:
         strategy.name = strategy_name
 
     strategy_desc = st.text_area(
@@ -225,8 +232,9 @@ with st.sidebar:
         value=strategy.description,
         placeholder="전술 설명을 간단히 입력하세요 (선택)",
         height=68,
+        disabled=_readonly,
     )
-    if strategy_desc != strategy.description:
+    if strategy_desc != strategy.description and not _readonly:
         strategy.description = strategy_desc
 
     col1, col2 = st.columns(2)
@@ -236,6 +244,7 @@ with st.sidebar:
             st.session_state.current_phase_idx = 0
             st.session_state.current_frame_idx = 0
             st.session_state.firestore_strategy_id = None
+            st.session_state.strategy_readonly = False
             st.rerun()
     with col2:
         json_str = strategy_to_json(strategy)
@@ -248,7 +257,7 @@ with st.sidebar:
         )
 
     # Save to storage
-    if team and team.get("id"):
+    if team and team.get("id") and not _readonly:
         from services.strategy_service import save_strategy
         visibility = st.selectbox(
             "공개 범위",
@@ -281,6 +290,7 @@ with st.sidebar:
             st.session_state.current_phase_idx = 0
             st.session_state.current_frame_idx = 0
             st.session_state.firestore_strategy_id = None
+            st.session_state.strategy_readonly = False
             st.success(f"'{loaded.name}' 불러오기 완료!")
             st.rerun()
         except Exception as e:
@@ -299,6 +309,7 @@ with st.sidebar:
         st.session_state.current_phase_idx = 0
         st.session_state.current_frame_idx = 0
         st.session_state.firestore_strategy_id = s["id"]
+        st.session_state.strategy_readonly = s.get("authorId") == "__seed__"
         st.session_state.active_tab = "⚽ 전술 보드"
         st.rerun()
 
@@ -378,14 +389,15 @@ with st.sidebar:
     phase_name = st.text_input(
         "단계 이름",
         value=current_phase.name,
-        key="phase_name_input"
+        key="phase_name_input",
+        disabled=_readonly,
     )
-    if phase_name != current_phase.name:
+    if phase_name != current_phase.name and not _readonly:
         current_phase.name = phase_name
 
     col_a, col_b = st.columns(2)
     with col_a:
-        if st.button("➕ 단계 추가", use_container_width=True):
+        if st.button("➕ 단계 추가", use_container_width=True, disabled=_readonly):
             last_phase = strategy.phases[-1]
             last_frame = last_phase.frames[-1]
             new_phase = Phase(
@@ -405,7 +417,7 @@ with st.sidebar:
             st.rerun()
     with col_b:
         if len(strategy.phases) > 1:
-            if st.button("🗑️ 단계 삭제", use_container_width=True):
+            if st.button("🗑️ 단계 삭제", use_container_width=True, disabled=_readonly):
                 strategy.phases.pop(phase_idx)
                 st.session_state.current_phase_idx = min(phase_idx, len(strategy.phases) - 1)
                 st.session_state.current_frame_idx = 0
