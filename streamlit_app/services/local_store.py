@@ -191,13 +191,17 @@ def query(
         ref = db.collection(collection)
 
         for field, op, value in (filters or []):
-            if op == "array_contains":
-                ref = ref.where(filter=fquery.FieldFilter(field, "array_contains", value))
-            else:
-                ref = ref.where(filter=fquery.FieldFilter(field, "==", value))
+            try:
+                ref = ref.where(filter=fquery.FieldFilter(field, op, value))
+            except AttributeError:
+                ref = ref.where(field, op, value)
 
         if order_by:
-            direction = fquery.Query.DESCENDING if order_dir.upper() in ("DESC", "DESCENDING") else fquery.Query.ASCENDING
+            try:
+                direction = fquery.Query.DESCENDING if order_dir.upper() in ("DESC", "DESCENDING") else fquery.Query.ASCENDING
+            except AttributeError:
+                from google.cloud.firestore_v1 import _helpers
+                direction = _helpers.Query.DESCENDING if order_dir.upper() in ("DESC", "DESCENDING") else _helpers.Query.ASCENDING
             ref = ref.order_by(order_by, direction=direction)
 
         if limit:
