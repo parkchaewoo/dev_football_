@@ -1,4 +1,4 @@
-"""로컬 JSON 파일 기반 저장소 — Firebase 대체."""
+"""저장소 모듈 — Firebase Firestore 사용, 미설정 시 로컬 JSON 폴백."""
 from __future__ import annotations
 
 import json
@@ -8,6 +8,9 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from services.firebase_init import get_firestore_client
+
+# ===== 로컬 JSON 폴백 (Firebase 미설정 시) =====
 _DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 _locks: dict[str, threading.Lock] = {}
 _global_lock = threading.Lock()
@@ -43,15 +46,31 @@ def _gen_id() -> str:
     return uuid.uuid4().hex[:16]
 
 
-# ---- CRUD ----
+def _use_firestore() -> bool:
+    return get_firestore_client() is not None
+
+
+# ===== CRUD =====
 
 def get_doc(collection: str, doc_id: str) -> dict | None:
+    if _use_firestore():
+        db = get_firestore_client()
+        snap = db.collection(collection).document(doc_id).get()
+        if snap.exists:
+            return snap.to_dict()
+        return None
+
     with _get_lock(collection):
         docs = _read_collection(collection)
         return docs.get(doc_id)
 
 
 def set_doc(collection: str, doc_id: str, data: dict) -> None:
+    if _use_firestore():
+        db = get_firestore_client()
+        db.collection(collection).document(doc_id).set(data)
+        return
+
     with _get_lock(collection):
         docs = _read_collection(collection)
         docs[doc_id] = data
@@ -59,6 +78,11 @@ def set_doc(collection: str, doc_id: str, data: dict) -> None:
 
 
 def add_doc(collection: str, data: dict) -> str:
+    if _use_firestore():
+        db = get_firestore_client()
+        _, ref = db.collection(collection).add(data)
+        return ref.id
+
     doc_id = _gen_id()
     with _get_lock(collection):
         docs = _read_collection(collection)
@@ -68,6 +92,11 @@ def add_doc(collection: str, data: dict) -> str:
 
 
 def update_doc(collection: str, doc_id: str, updates: dict) -> None:
+    if _use_firestore():
+        db = get_firestore_client()
+        db.collection(collection).document(doc_id).update(updates)
+        return
+
     with _get_lock(collection):
         docs = _read_collection(collection)
         if doc_id in docs:
@@ -76,6 +105,11 @@ def update_doc(collection: str, doc_id: str, updates: dict) -> None:
 
 
 def delete_doc(collection: str, doc_id: str) -> None:
+    if _use_firestore():
+        db = get_firestore_client()
+        db.collection(collection).document(doc_id).delete()
+        return
+
     with _get_lock(collection):
         docs = _read_collection(collection)
         if doc_id in docs:
@@ -83,9 +117,17 @@ def delete_doc(collection: str, doc_id: str) -> None:
             _write_collection(collection, docs)
 
 
-# ---- Array operations ----
+# ===== Array operations =====
 
 def array_union(collection: str, doc_id: str, field: str, values: list) -> None:
+    if _use_firestore():
+        from google.cloud.firestore_v1 import ArrayUnion
+        db = get_firestore_client()
+        db.collection(collection).document(doc_id).update({
+            field: ArrayUnion(values)
+        })
+        return
+
     with _get_lock(collection):
         docs = _read_collection(collection)
         if doc_id in docs:
@@ -98,6 +140,14 @@ def array_union(collection: str, doc_id: str, field: str, values: list) -> None:
 
 
 def array_remove(collection: str, doc_id: str, field: str, values: list) -> None:
+    if _use_firestore():
+        from google.cloud.firestore_v1 import ArrayRemove
+        db = get_firestore_client()
+        db.collection(collection).document(doc_id).update({
+            field: ArrayRemove(values)
+        })
+        return
+
     with _get_lock(collection):
         docs = _read_collection(collection)
         if doc_id in docs:
@@ -107,6 +157,14 @@ def array_remove(collection: str, doc_id: str, field: str, values: list) -> None
 
 
 def increment(collection: str, doc_id: str, field: str, delta: int) -> None:
+    if _use_firestore():
+        from google.cloud.firestore_v1 import Increment
+        db = get_firestore_client()
+        db.collection(collection).document(doc_id).update({
+            field: Increment(delta)
+        })
+        return
+
     with _get_lock(collection):
         docs = _read_collection(collection)
         if doc_id in docs:
@@ -114,7 +172,7 @@ def increment(collection: str, doc_id: str, field: str, delta: int) -> None:
             _write_collection(collection, docs)
 
 
-# ---- Query ----
+# ===== Query =====
 
 def query(
     collection: str,
@@ -127,6 +185,32 @@ def query(
 
     filters: list of (field, op, value) where op is "==" or "array_contains"
     """
+    if _use_firestore():
+        from google.cloud.firestore_v1 import query as fquery
+        db = get_firestore_client()
+        ref = db.collection(collection)
+
+        for field, op, value in (filters or []):
+            if op == "array_contains":
+                ref = ref.where(filter=fquery.FieldFilter(field, "array_contains", value))
+            else:
+                ref = ref.where(filter=fquery.FieldFilter(field, "==", value))
+
+        if order_by:
+            direction = fquery.Query.DESCENDING if order_dir.upper() in ("DESC", "DESCENDING") else fquery.Query.ASCENDING
+            ref = ref.order_by(order_by, direction=direction)
+
+        if limit:
+            ref = ref.limit(limit)
+
+        results = []
+        for doc in ref.stream():
+            d = doc.to_dict()
+            d["id"] = doc.id
+            results.append(d)
+        return results
+
+    # 로컬 폴백
     with _get_lock(collection):
         docs = _read_collection(collection)
 

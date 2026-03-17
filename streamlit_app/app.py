@@ -32,6 +32,39 @@ if "current_team" not in st.session_state:
 if "firestore_strategy_id" not in st.session_state:
     st.session_state.firestore_strategy_id = None
 
+# ===== FIREBASE STATUS =====
+from services.firebase_init import is_firebase_configured
+
+if not is_firebase_configured():
+    st.warning("⚠️ Firebase가 설정되지 않았습니다. 로컬 저장소 모드로 동작합니다.")
+    with st.expander("Firebase 연결 방법 (팀 간 데이터 공유용)", expanded=False):
+        st.markdown("""
+**1단계: Firebase 서비스 계정 키 발급**
+1. [Firebase Console](https://console.firebase.google.com) 접속
+2. 프로젝트 설정 → **서비스 계정** 탭
+3. **"새 비공개 키 생성"** 클릭 → JSON 파일 다운로드
+
+**2단계: 환경변수 설정** (둘 중 하나 선택)
+
+방법 A — 파일 경로:
+```bash
+export FIREBASE_SERVICE_ACCOUNT_KEY=/path/to/serviceAccountKey.json
+```
+
+방법 B — JSON 직접 입력:
+```bash
+export FIREBASE_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}'
+```
+
+**3단계: 앱 재시작**
+```bash
+streamlit run app.py
+```
+
+> Firebase Spark(무료) 플랜은 추가금이 없습니다.
+> React 앱과 동일한 Firebase 프로젝트를 사용하면 데이터가 공유됩니다.
+        """)
+
 # ===== LOGIN SCREEN =====
 if not st.session_state.user:
     st.markdown(
