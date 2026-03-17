@@ -495,7 +495,7 @@ def render_tactical_board_page():
     # ===== POSITION EDITOR =====
     if _readonly:
         st.caption("🔒 읽기 전용 — 위치 편집이 비활성화되어 있습니다.")
-    with st.expander("📍 선수/공 위치 정밀 편집 (드래그 대신 좌표 입력)", expanded=not _readonly, disabled=_readonly):
+    with st.expander("📍 선수/공 위치 정밀 편집 (드래그 대신 좌표 입력)", expanded=not _readonly):
         st.caption("아래에서 정밀 좌표를 수정하면 3D 보드에 즉시 반영됩니다.")
 
         st.markdown("**⚽ 공 위치**")
@@ -505,13 +505,13 @@ def render_tactical_board_page():
             new_ball_x = st.number_input(
                 "공 X (좌우)", min_value=-20.0, max_value=20.0,
                 value=float(current_frame.ball_position.x), step=0.5,
-                key=fk + "ball_x", format="%.1f",
+                key=fk + "ball_x", format="%.1f", disabled=_readonly,
             )
         with ball_cols[1]:
             new_ball_z = st.number_input(
                 "공 Z (상하)", min_value=-14.0, max_value=14.0,
                 value=float(current_frame.ball_position.z), step=0.5,
-                key=fk + "ball_z", format="%.1f",
+                key=fk + "ball_z", format="%.1f", disabled=_readonly,
             )
         new_ball_y = 0.0
         if is_lob:
@@ -519,9 +519,9 @@ def render_tactical_board_page():
                 new_ball_y = st.number_input(
                     "공 높이 (Y)", min_value=0.0, max_value=8.0,
                     value=float(current_frame.ball_position.y), step=0.1,
-                    key=fk + "ball_y", format="%.1f",
+                    key=fk + "ball_y", format="%.1f", disabled=_readonly,
                 )
-        if (abs(new_ball_x - current_frame.ball_position.x) > 0.01 or
+        if not _readonly and (abs(new_ball_x - current_frame.ball_position.x) > 0.01 or
                 abs(new_ball_z - current_frame.ball_position.z) > 0.01 or
                 abs(new_ball_y - current_frame.ball_position.y) > 0.01):
             current_frame.ball_position.x = new_ball_x
@@ -542,15 +542,15 @@ def render_tactical_board_page():
                     nx = st.number_input(
                         f"#{p.number} X", min_value=-20.0, max_value=20.0,
                         value=float(p.position.x), step=0.5,
-                        key=fk + f"p_{p.id}_x", format="%.1f",
+                        key=fk + f"p_{p.id}_x", format="%.1f", disabled=_readonly,
                     )
                 with pc2:
                     nz = st.number_input(
                         f"#{p.number} Z", min_value=-14.0, max_value=14.0,
                         value=float(p.position.z), step=0.5,
-                        key=fk + f"p_{p.id}_z", format="%.1f",
+                        key=fk + f"p_{p.id}_z", format="%.1f", disabled=_readonly,
                     )
-                if abs(nx - p.position.x) > 0.01 or abs(nz - p.position.z) > 0.01:
+                if not _readonly and (abs(nx - p.position.x) > 0.01 or abs(nz - p.position.z) > 0.01):
                     p.position.x = nx
                     p.position.z = nz
 
@@ -562,15 +562,15 @@ def render_tactical_board_page():
                     nx = st.number_input(
                         f"#{p.number} X", min_value=-20.0, max_value=20.0,
                         value=float(p.position.x), step=0.5,
-                        key=fk + f"p_{p.id}_x", format="%.1f",
+                        key=fk + f"p_{p.id}_x", format="%.1f", disabled=_readonly,
                     )
                 with pc2:
                     nz = st.number_input(
                         f"#{p.number} Z", min_value=-14.0, max_value=14.0,
                         value=float(p.position.z), step=0.5,
-                        key=fk + f"p_{p.id}_z", format="%.1f",
+                        key=fk + f"p_{p.id}_z", format="%.1f", disabled=_readonly,
                     )
-                if abs(nx - p.position.x) > 0.01 or abs(nz - p.position.z) > 0.01:
+                if not _readonly and (abs(nx - p.position.x) > 0.01 or abs(nz - p.position.z) > 0.01):
                     p.position.x = nx
                     p.position.z = nz
 
