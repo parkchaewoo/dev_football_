@@ -373,31 +373,47 @@ with st.sidebar:
 
 # ===== MAIN CONTENT - TAB NAVIGATION =====
 from services.team_service import is_admin as _is_admin
+from services.auth_service import is_super_admin as _is_super_admin
 
 _show_admin_tab = team and team.get("id") and team.get("leaderId") == user["uid"]
+_show_super_admin = _is_super_admin(st.session_state.nickname)
+
 _tab_labels = ["⚽ 전술 보드", "📚 전술 공유", "🏥 부상/병원", "📋 게시판"]
 if _show_admin_tab:
     _tab_labels.append("🛠️ 관리")
+if _show_super_admin:
+    _tab_labels.append("👑 종합 관리")
 
 _tabs = st.tabs(_tab_labels)
 
-with _tabs[0]:
+_tab_idx = 0
+with _tabs[_tab_idx]:
     from pages.tactical_board import render_tactical_board_page
     render_tactical_board_page()
 
-with _tabs[1]:
+_tab_idx += 1
+with _tabs[_tab_idx]:
     from pages.strategy_gallery import render_strategy_gallery_page
     render_strategy_gallery_page()
 
-with _tabs[2]:
+_tab_idx += 1
+with _tabs[_tab_idx]:
     from pages.injury_hospital import render_injury_hospital_page
     render_injury_hospital_page()
 
-with _tabs[3]:
+_tab_idx += 1
+with _tabs[_tab_idx]:
     from pages.team_board import render_team_board_page
     render_team_board_page()
 
 if _show_admin_tab:
-    with _tabs[4]:
+    _tab_idx += 1
+    with _tabs[_tab_idx]:
         from pages.admin_manage import render_admin_manage_page
         render_admin_manage_page()
+
+if _show_super_admin:
+    _tab_idx += 1
+    with _tabs[_tab_idx]:
+        from pages.super_admin import render_super_admin_page
+        render_super_admin_page()
