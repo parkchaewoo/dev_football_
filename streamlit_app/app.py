@@ -441,20 +441,20 @@ _selected = st.radio(
 st.session_state.active_tab = _selected
 
 if _selected == "⚽ 전술 보드":
-    from pages.tactical_board import render_tactical_board_page
+    from views.tactical_board import render_tactical_board_page
     render_tactical_board_page()
 elif _selected == "📚 전술 공유":
-    from pages.strategy_gallery import render_strategy_gallery_page
+    from views.strategy_gallery import render_strategy_gallery_page
     render_strategy_gallery_page()
 elif _selected == "🏥 부상/병원":
-    from pages.injury_hospital import render_injury_hospital_page
+    from views.injury_hospital import render_injury_hospital_page
     render_injury_hospital_page()
 elif _selected == "📋 게시판":
-    from pages.team_board import render_team_board_page
+    from views.team_board import render_team_board_page
     render_team_board_page()
 elif _selected == "🛠️ 관리" and _show_admin_tab:
-    from pages.admin_manage import render_admin_manage_page
+    from views.admin_manage import render_admin_manage_page
     render_admin_manage_page()
 elif _selected == "👑 종합 관리" and _show_super_admin:
-    from pages.super_admin import render_super_admin_page
+    from views.super_admin import render_super_admin_page
     render_super_admin_page()
