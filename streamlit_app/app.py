@@ -29,6 +29,14 @@ if "current_team" not in st.session_state:
     st.session_state.current_team = None
 if "firestore_strategy_id" not in st.session_state:
     st.session_state.firestore_strategy_id = None
+if "active_tab" not in st.session_state:
+    st.session_state.active_tab = "⚽ 전술 보드"
+
+# ===== SEED EXAMPLE STRATEGIES =====
+if "examples_seeded" not in st.session_state:
+    from services.seed_examples import seed_example_strategies
+    seed_example_strategies()
+    st.session_state.examples_seeded = True
 
 # ===== FIREBASE STATUS =====
 from services.firebase_init import is_firebase_configured
@@ -283,6 +291,17 @@ with st.sidebar:
 
     st.divider()
     load_tab1, load_tab2 = st.tabs(["팀 전술", "공개 전술"])
+
+    def _load_strategy_from_sidebar(s):
+        """사이드바에서 전술 로드 → 전술 보드 탭으로 전환."""
+        loaded = strategy_from_firestore(s)
+        st.session_state.strategy = loaded
+        st.session_state.current_phase_idx = 0
+        st.session_state.current_frame_idx = 0
+        st.session_state.firestore_strategy_id = s["id"]
+        st.session_state.active_tab = "⚽ 전술 보드"
+        st.rerun()
+
     with load_tab1:
         if team and team.get("id"):
             team_strats = get_team_strategies(team["id"])
@@ -293,12 +312,7 @@ with st.sidebar:
                     key=f"load_t_{s['id']}",
                     use_container_width=True,
                 ):
-                    loaded = strategy_from_firestore(s)
-                    st.session_state.strategy = loaded
-                    st.session_state.current_phase_idx = 0
-                    st.session_state.current_frame_idx = 0
-                    st.session_state.firestore_strategy_id = s["id"]
-                    st.rerun()
+                    _load_strategy_from_sidebar(s)
         else:
             st.caption("팀을 선택하면 팀 전술을 볼 수 있습니다.")
 
@@ -310,12 +324,7 @@ with st.sidebar:
                 key=f"load_p_{s['id']}",
                 use_container_width=True,
             ):
-                loaded = strategy_from_firestore(s)
-                st.session_state.strategy = loaded
-                st.session_state.current_phase_idx = 0
-                st.session_state.current_frame_idx = 0
-                st.session_state.firestore_strategy_id = s["id"]
-                st.rerun()
+                _load_strategy_from_sidebar(s)
 
     st.divider()
 
@@ -384,36 +393,35 @@ if _show_admin_tab:
 if _show_super_admin:
     _tab_labels.append("👑 종합 관리")
 
-_tabs = st.tabs(_tab_labels)
+# active_tab이 현재 옵션에 없으면 기본값으로 리셋
+if st.session_state.active_tab not in _tab_labels:
+    st.session_state.active_tab = _tab_labels[0]
 
-_tab_idx = 0
-with _tabs[_tab_idx]:
+_selected = st.radio(
+    "메뉴",
+    _tab_labels,
+    index=_tab_labels.index(st.session_state.active_tab),
+    horizontal=True,
+    label_visibility="collapsed",
+    key="main_nav",
+)
+st.session_state.active_tab = _selected
+
+if _selected == "⚽ 전술 보드":
     from pages.tactical_board import render_tactical_board_page
     render_tactical_board_page()
-
-_tab_idx += 1
-with _tabs[_tab_idx]:
+elif _selected == "📚 전술 공유":
     from pages.strategy_gallery import render_strategy_gallery_page
     render_strategy_gallery_page()
-
-_tab_idx += 1
-with _tabs[_tab_idx]:
+elif _selected == "🏥 부상/병원":
     from pages.injury_hospital import render_injury_hospital_page
     render_injury_hospital_page()
-
-_tab_idx += 1
-with _tabs[_tab_idx]:
+elif _selected == "📋 게시판":
     from pages.team_board import render_team_board_page
     render_team_board_page()
-
-if _show_admin_tab:
-    _tab_idx += 1
-    with _tabs[_tab_idx]:
-        from pages.admin_manage import render_admin_manage_page
-        render_admin_manage_page()
-
-if _show_super_admin:
-    _tab_idx += 1
-    with _tabs[_tab_idx]:
-        from pages.super_admin import render_super_admin_page
-        render_super_admin_page()
+elif _selected == "🛠️ 관리" and _show_admin_tab:
+    from pages.admin_manage import render_admin_manage_page
+    render_admin_manage_page()
+elif _selected == "👑 종합 관리" and _show_super_admin:
+    from pages.super_admin import render_super_admin_page
+    render_super_admin_page()

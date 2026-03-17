@@ -52,7 +52,7 @@ def _render_strategy_card(s, idx, prefix, user, team, show_team_badge=True):
                 st.session_state.current_phase_idx = 0
                 st.session_state.current_frame_idx = 0
                 st.session_state.firestore_strategy_id = strat_id
-                st.success(f"'{name}' 불러옴! '전술 보드' 탭에서 확인하세요.")
+                st.session_state.active_tab = "⚽ 전술 보드"
                 st.rerun()
 
             # Fork (copy as new strategy)
