@@ -129,11 +129,15 @@ if not st.session_state.current_team:
         team_desc = st.text_input("팀 설명 (선택)", key="new_team_desc")
         if st.button("만들기", use_container_width=True, type="primary"):
             if team_name.strip():
-                new_team = create_team(team_name.strip(), team_desc.strip(), user["uid"])
-                if new_team:
-                    st.session_state.current_team = new_team
-                    st.success(f"팀 '{new_team['name']}' 생성! 초대코드: {new_team['inviteCode']}")
-                    st.rerun()
+                from services.team_service import team_name_exists
+                if team_name_exists(team_name.strip()):
+                    st.error("이미 같은 이름의 팀이 존재합니다. 다른 이름을 사용해주세요.")
+                else:
+                    new_team = create_team(team_name.strip(), team_desc.strip(), user["uid"])
+                    if new_team:
+                        st.session_state.current_team = new_team
+                        st.success(f"팀 '{new_team['name']}' 생성! 초대코드: {new_team['inviteCode']}")
+                        st.rerun()
 
     with col_j:
         st.subheader("팀 가입")
@@ -368,20 +372,32 @@ with st.sidebar:
 
 
 # ===== MAIN CONTENT - TAB NAVIGATION =====
-tab1, tab2, tab3, tab4 = st.tabs(["⚽ 전술 보드", "📚 전술 공유", "🏥 부상/병원", "📋 게시판"])
+from services.team_service import is_admin as _is_admin
 
-with tab1:
+_show_admin_tab = team and team.get("id") and team.get("leaderId") == user["uid"]
+_tab_labels = ["⚽ 전술 보드", "📚 전술 공유", "🏥 부상/병원", "📋 게시판"]
+if _show_admin_tab:
+    _tab_labels.append("🛠️ 관리")
+
+_tabs = st.tabs(_tab_labels)
+
+with _tabs[0]:
     from pages.tactical_board import render_tactical_board_page
     render_tactical_board_page()
 
-with tab2:
+with _tabs[1]:
     from pages.strategy_gallery import render_strategy_gallery_page
     render_strategy_gallery_page()
 
-with tab3:
+with _tabs[2]:
     from pages.injury_hospital import render_injury_hospital_page
     render_injury_hospital_page()
 
-with tab4:
+with _tabs[3]:
     from pages.team_board import render_team_board_page
     render_team_board_page()
+
+if _show_admin_tab:
+    with _tabs[4]:
+        from pages.admin_manage import render_admin_manage_page
+        render_admin_manage_page()

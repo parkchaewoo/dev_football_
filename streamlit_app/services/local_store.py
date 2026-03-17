@@ -241,3 +241,38 @@ def query(
         results = results[:limit]
 
     return results
+
+
+def get_all_docs(collection: str, limit: int | None = None) -> list[dict]:
+    """컬렉션의 모든 문서를 반환."""
+    if _use_firestore():
+        db = get_firestore_client()
+        ref = db.collection(collection)
+        if limit:
+            ref = ref.limit(limit)
+        results = []
+        for doc in ref.stream():
+            d = doc.to_dict()
+            d["id"] = doc.id
+            results.append(d)
+        return results
+
+    with _get_lock(collection):
+        docs = _read_collection(collection)
+    results = []
+    for doc_id, doc in docs.items():
+        result = dict(doc)
+        result["id"] = doc_id
+        results.append(result)
+    if limit:
+        results = results[:limit]
+    return results
+
+
+def delete_docs_batch(collection: str, doc_ids: list[str]) -> int:
+    """여러 문서를 일괄 삭제. 반환: 삭제된 수."""
+    count = 0
+    for doc_id in doc_ids:
+        delete_doc(collection, doc_id)
+        count += 1
+    return count

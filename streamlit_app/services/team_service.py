@@ -10,8 +10,16 @@ def _generate_invite_code() -> str:
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
 
+def team_name_exists(name: str) -> bool:
+    """동일한 이름의 팀이 이미 존재하는지 확인."""
+    existing = local_store.query("teams", [("name", "==", name)])
+    return len(existing) > 0
+
+
 def create_team(name: str, description: str, user_id: str) -> dict | None:
-    """팀 생성. 반환: 팀 dict."""
+    """팀 생성. 중복 이름이면 None 반환."""
+    if team_name_exists(name):
+        return None
     team_data = {
         "name": name,
         "description": description,
