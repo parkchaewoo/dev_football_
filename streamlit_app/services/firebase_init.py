@@ -16,20 +16,37 @@ def _init_firebase():
     _initialized = True
 
     try:
+        import streamlit as st
         import firebase_admin
         from firebase_admin import credentials, firestore, db as rtdb
 
-        cred_path = os.environ.get("FIREBASE_SERVICE_ACCOUNT_KEY", "")
-        cred_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON", "")
+        # 1) st.secrets의 TOML 테이블 (Streamlit Cloud 권장)
+        # 2) 환경변수 JSON 문자열
+        # 3) 환경변수 파일 경로
+        cred_dict = None
 
-        if cred_path and os.path.exists(cred_path):
-            cred = credentials.Certificate(cred_path)
-        elif cred_json:
-            cred = credentials.Certificate(json.loads(cred_json))
-        else:
+        if "FIREBASE_SERVICE_ACCOUNT" in st.secrets:
+            cred_dict = dict(st.secrets["FIREBASE_SERVICE_ACCOUNT"])
+
+        if cred_dict is None:
+            cred_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON", "")
+            if cred_json:
+                cred_dict = json.loads(cred_json)
+
+        if cred_dict is None:
+            cred_path = os.environ.get("FIREBASE_SERVICE_ACCOUNT_KEY", "")
+            if cred_path and os.path.exists(cred_path):
+                cred_dict = json.load(open(cred_path))
+
+        if cred_dict is None:
             return
 
-        database_url = os.environ.get("FIREBASE_DATABASE_URL", "")
+        cred = credentials.Certificate(cred_dict)
+
+        database_url = (
+            st.secrets.get("FIREBASE_DATABASE_URL", "")
+            or os.environ.get("FIREBASE_DATABASE_URL", "")
+        )
 
         if not firebase_admin._apps:
             options = {}
