@@ -196,22 +196,20 @@ def query(
             except AttributeError:
                 ref = ref.where(field, op, value)
 
-        if order_by:
-            try:
-                direction = fquery.Query.DESCENDING if order_dir.upper() in ("DESC", "DESCENDING") else fquery.Query.ASCENDING
-            except AttributeError:
-                from google.cloud.firestore_v1 import _helpers
-                direction = _helpers.Query.DESCENDING if order_dir.upper() in ("DESC", "DESCENDING") else _helpers.Query.ASCENDING
-            ref = ref.order_by(order_by, direction=direction)
-
-        if limit:
-            ref = ref.limit(limit)
-
         results = []
         for doc in ref.stream():
             d = doc.to_dict()
             d["id"] = doc.id
             results.append(d)
+
+        # 복합 인덱스 없이도 동작하도록 Python에서 정렬
+        if order_by:
+            reverse = order_dir.upper() in ("DESC", "DESCENDING")
+            results.sort(key=lambda d: d.get(order_by, 0), reverse=reverse)
+
+        if limit:
+            results = results[:limit]
+
         return results
 
     # 로컬 폴백
