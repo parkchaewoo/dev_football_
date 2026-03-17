@@ -21,8 +21,6 @@ if "current_phase_idx" not in st.session_state:
     st.session_state.current_phase_idx = 0
 if "current_frame_idx" not in st.session_state:
     st.session_state.current_frame_idx = 0
-if "chat_messages" not in st.session_state:
-    st.session_state.chat_messages = []
 if "nickname" not in st.session_state:
     st.session_state.nickname = ""
 if "user" not in st.session_state:
@@ -54,11 +52,6 @@ export FIREBASE_SERVICE_ACCOUNT_KEY=/path/to/serviceAccountKey.json
 방법 B — JSON 직접 입력:
 ```bash
 export FIREBASE_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}'
-```
-
-**2.5단계: Realtime Database URL 설정** (채팅 기능용)
-```bash
-export FIREBASE_DATABASE_URL=https://your-project-id-default-rtdb.firebaseio.com
 ```
 
 **3단계: 앱 재시작**
@@ -372,41 +365,6 @@ with st.sidebar:
                 st.session_state.current_frame_idx = 0
                 st.rerun()
 
-    st.divider()
-
-    # Chat
-    st.subheader("💬 채팅")
-    st.caption(f"👤 {st.session_state.nickname}")
-
-    from services.chat_service import get_messages, send_message as send_chat_msg
-    from services.firebase_init import get_rtdb_reference
-
-    use_rtdb = get_rtdb_reference() is not None
-
-    if use_rtdb:
-        firebase_msgs = get_messages(50)
-        display_msgs = firebase_msgs
-    else:
-        display_msgs = st.session_state.chat_messages
-
-    chat_container = st.container(height=200)
-    with chat_container:
-        for msg in display_msgs:
-            is_own = msg.get("author") == st.session_state.nickname
-            with st.chat_message("user" if is_own else "assistant"):
-                st.markdown(f"**{msg.get('author', '?')}**: {msg.get('text', '')}")
-
-    chat_text = st.text_input("메시지 입력", key="sidebar_chat_input", placeholder="메시지를 입력하세요...", label_visibility="collapsed")
-    if st.button("전송", key="send_chat", use_container_width=True):
-        if chat_text.strip():
-            if use_rtdb:
-                send_chat_msg(st.session_state.nickname, chat_text.strip())
-            else:
-                st.session_state.chat_messages.append({
-                    "author": st.session_state.nickname,
-                    "text": chat_text.strip(),
-                })
-            st.rerun()
 
 
 # ===== MAIN CONTENT - TAB NAVIGATION =====

@@ -33,15 +33,6 @@ export interface Strategy {
   createdAt: number;
 }
 
-export interface ChatMessage {
-  id: string;
-  author: string;
-  text: string;
-  timestamp: number;
-  strategyId?: string;
-  phaseId?: string;
-}
-
 export interface UserProfile {
   uid: string;
   displayName: string;

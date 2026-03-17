@@ -7,7 +7,6 @@ import PhasePanel from './components/Animation/PhasePanel';
 import Timeline from './components/Animation/Timeline';
 import PlaybackControls from './components/Animation/PlaybackControls';
 import BallHeightSlider from './components/Controls/BallHeightSlider';
-import ChatRoom from './components/Chat/ChatRoom';
 import StrategyForm from './components/Strategy/StrategyForm';
 import StrategyFeed from './components/Strategy/StrategyFeed';
 import CommentSection from './components/Social/CommentSection';
@@ -65,7 +64,6 @@ function TacticalBoardApp() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showSaveForm, setShowSaveForm] = useState(false);
   const [showFeed, setShowFeed] = useState<'team' | 'public' | null>(null);
-  const [showChat, setShowChat] = useState(true);
   const [showComments, setShowComments] = useState(false);
   const [showInjury, setShowInjury] = useState(false);
   const [showBoard, setShowBoard] = useState(false);
@@ -253,12 +251,6 @@ function TacticalBoardApp() {
           <button onClick={() => setShowBoard(true)} className="px-3 py-1 text-sm bg-amber-600 rounded hover:bg-amber-700">
             게시판
           </button>
-          <button
-            onClick={() => setShowChat((v) => !v)}
-            className={`px-3 py-1 text-sm rounded ${showChat ? 'bg-purple-600' : 'bg-gray-700'}`}
-          >
-            채팅
-          </button>
           {strategyId && (
             <button
               onClick={() => setShowComments((v) => !v)}
@@ -337,11 +329,6 @@ function TacticalBoardApp() {
           </div>
         </div>
 
-        {showChat && (
-          <div className="w-80 border-l border-gray-700 shrink-0">
-            <ChatRoom strategyId={strategyId || 'general'} />
-          </div>
-        )}
       </div>
 
       {showSaveForm && (

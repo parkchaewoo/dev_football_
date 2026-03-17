@@ -2,7 +2,6 @@ import { useState } from 'react';
 
 const ENV_TEMPLATE = `VITE_FIREBASE_API_KEY=여기에_입력
 VITE_FIREBASE_AUTH_DOMAIN=여기에_입력
-VITE_FIREBASE_DATABASE_URL=여기에_입력
 VITE_FIREBASE_PROJECT_ID=여기에_입력
 VITE_FIREBASE_STORAGE_BUCKET=여기에_입력
 VITE_FIREBASE_MESSAGING_SENDER_ID=여기에_입력
@@ -46,16 +45,7 @@ const steps = [
     ],
   },
   {
-    title: '5. Realtime Database 설정',
-    content: [
-      '왼쪽 메뉴 → "빌드" → "Realtime Database"',
-      '"데이터베이스 만들기" 클릭',
-      '위치: 싱가포르(asia-southeast1) 선택',
-      '"테스트 모드에서 시작" → "사용 설정"',
-    ],
-  },
-  {
-    title: '6. .env 파일 생성',
+    title: '5. .env 파일 생성',
     content: [
       '프로젝트 루트에 .env 파일 생성',
       '아래 템플릿을 복사하여 Firebase 콘솔의 값으로 교체',
