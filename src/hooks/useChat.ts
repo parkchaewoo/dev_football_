@@ -20,7 +20,7 @@ export function useChat(strategyId?: string) {
       const db = getFirebaseDB();
       if (!db) return;
       const chatRef = ref(db, 'chat');
-      const chatQuery = query(chatRef, orderByChild('timestamp'), limitToLast(100));
+      const chatQuery = query(chatRef, orderByChild('timestamp'), limitToLast(50));
       const unsubscribe = onValue(chatQuery, (snapshot) => {
         const data = snapshot.val();
         if (data) {

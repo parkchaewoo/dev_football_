@@ -34,7 +34,7 @@ export default function CommentSection({ strategyId }: CommentSectionProps) {
   };
 
   const handleDelete = async (id: string) => {
-    await deleteComment(id);
+    await deleteComment(id, strategyId);
     setComments((prev) => prev.filter((c) => c.id !== id));
   };
 

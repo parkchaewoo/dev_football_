@@ -3,6 +3,7 @@ import {
   query, where, orderBy
 } from 'firebase/firestore';
 import { getFirebaseFirestore } from '../utils/firebase';
+import { getCached, invalidateCache } from '../utils/firestoreCache';
 import { incrementLikes } from './strategyService';
 import type { Comment } from '../types';
 
@@ -23,23 +24,27 @@ export async function addComment(
     createdAt: Date.now(),
   };
   const ref = await addDoc(collection(fs, 'comments'), comment);
+  invalidateCache(`comments:${strategyId}`);
   return { id: ref.id, ...comment };
 }
 
 export async function getComments(strategyId: string): Promise<Comment[]> {
-  const fs = getFirebaseFirestore()!;
-  const q = query(
-    collection(fs, 'comments'),
-    where('strategyId', '==', strategyId),
-    orderBy('createdAt', 'asc')
-  );
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Comment);
+  return getCached(`comments:${strategyId}`, async () => {
+    const fs = getFirebaseFirestore()!;
+    const q = query(
+      collection(fs, 'comments'),
+      where('strategyId', '==', strategyId),
+      orderBy('createdAt', 'asc')
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Comment);
+  }, 2 * 60 * 1000);
 }
 
-export async function deleteComment(commentId: string): Promise<void> {
+export async function deleteComment(commentId: string, strategyId: string): Promise<void> {
   const fs = getFirebaseFirestore()!;
   await deleteDoc(doc(fs, 'comments', commentId));
+  invalidateCache(`comments:${strategyId}`);
 }
 
 export async function toggleLike(
@@ -54,6 +59,7 @@ export async function toggleLike(
   if (snap.exists()) {
     await deleteDoc(ref);
     await incrementLikes(strategyId, -1);
+    invalidateCache(`likes:${strategyId}:${userId}`);
     return false;
   } else {
     await setDoc(ref, {
@@ -62,6 +68,7 @@ export async function toggleLike(
       createdAt: Date.now(),
     });
     await incrementLikes(strategyId, 1);
+    invalidateCache(`likes:${strategyId}:${userId}`);
     return true;
   }
 }
@@ -70,8 +77,10 @@ export async function hasLiked(
   strategyId: string,
   userId: string
 ): Promise<boolean> {
-  const fs = getFirebaseFirestore()!;
-  const likeId = `${strategyId}__${userId}`;
-  const snap = await getDoc(doc(fs, 'likes', likeId));
-  return snap.exists();
+  return getCached(`likes:${strategyId}:${userId}`, async () => {
+    const fs = getFirebaseFirestore()!;
+    const likeId = `${strategyId}__${userId}`;
+    const snap = await getDoc(doc(fs, 'likes', likeId));
+    return snap.exists();
+  }, 5 * 60 * 1000);
 }

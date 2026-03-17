@@ -1,7 +1,13 @@
 import { useAuth } from '../../contexts/AuthContext';
+import { isFirebaseConfigured } from '../../utils/firebase';
+import FirebaseSetupGuide from '../Guide/FirebaseSetupGuide';
 
 export default function LoginScreen() {
   const { signInWithGoogle, loading } = useAuth();
+
+  if (!isFirebaseConfigured()) {
+    return <FirebaseSetupGuide />;
+  }
 
   if (loading) {
     return (

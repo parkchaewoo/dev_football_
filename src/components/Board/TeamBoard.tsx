@@ -25,7 +25,7 @@ export default function TeamBoard({ team, onClose }: TeamBoardProps) {
   const [password, setPassword] = useState('');
 
   const userId = profile?.uid || '';
-  const teamData = { leaderId: team.leaderId, admins: (team as Record<string, unknown>).admins as string[] | undefined };
+  const teamData = { leaderId: team.leaderId, admins: (team as unknown as Record<string, unknown>).admins as string[] | undefined };
 
   useEffect(() => {
     loadPosts();

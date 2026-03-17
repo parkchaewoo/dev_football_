@@ -3,6 +3,7 @@ import {
   query, where, orderBy, limit
 } from 'firebase/firestore';
 import { getFirebaseFirestore } from '../utils/firebase';
+import { getCached, invalidateCache } from '../utils/firestoreCache';
 import type { BoardPost } from '../types';
 
 function hashPassword(password: string): string {
@@ -39,19 +40,22 @@ export async function createPost(
     updatedAt: Date.now(),
   };
   const ref = await addDoc(collection(fs, 'board_posts'), postData);
+  invalidateCache(`posts:${teamId}`);
   return { id: ref.id, ...postData };
 }
 
 export async function getTeamPosts(teamId: string): Promise<BoardPost[]> {
-  const fs = getFirebaseFirestore()!;
-  const q = query(
-    collection(fs, 'board_posts'),
-    where('teamId', '==', teamId),
-    orderBy('createdAt', 'desc'),
-    limit(50)
-  );
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as BoardPost);
+  return getCached(`posts:${teamId}`, async () => {
+    const fs = getFirebaseFirestore()!;
+    const q = query(
+      collection(fs, 'board_posts'),
+      where('teamId', '==', teamId),
+      orderBy('createdAt', 'desc'),
+      limit(50)
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as BoardPost);
+  }, 3 * 60 * 1000);
 }
 
 export async function getPost(postId: string): Promise<BoardPost | null> {
@@ -81,11 +85,13 @@ export async function updatePost(
     updateData.passwordHash = '';
   }
   await updateDoc(doc(fs, 'board_posts', postId), updateData);
+  invalidateCache('posts:');
 }
 
 export async function deletePost(postId: string): Promise<void> {
   const fs = getFirebaseFirestore()!;
   await deleteDoc(doc(fs, 'board_posts', postId));
+  invalidateCache('posts:');
 }
 
 export function canReadSecret(
