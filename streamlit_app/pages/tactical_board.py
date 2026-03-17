@@ -501,7 +501,7 @@ def render_tactical_board_page():
             )
         with ball_cols[1]:
             new_ball_z = st.number_input(
-                "공 Z (상하)", min_value=-10.0, max_value=10.0,
+                "공 Z (상하)", min_value=-14.0, max_value=14.0,
                 value=float(current_frame.ball_position.z), step=0.5,
                 key=fk + "ball_z", format="%.1f",
             )
@@ -538,7 +538,7 @@ def render_tactical_board_page():
                     )
                 with pc2:
                     nz = st.number_input(
-                        f"#{p.number} Z", min_value=-10.0, max_value=10.0,
+                        f"#{p.number} Z", min_value=-14.0, max_value=14.0,
                         value=float(p.position.z), step=0.5,
                         key=fk + f"p_{p.id}_z", format="%.1f",
                     )
@@ -558,7 +558,7 @@ def render_tactical_board_page():
                     )
                 with pc2:
                     nz = st.number_input(
-                        f"#{p.number} Z", min_value=-10.0, max_value=10.0,
+                        f"#{p.number} Z", min_value=-14.0, max_value=14.0,
                         value=float(p.position.z), step=0.5,
                         key=fk + f"p_{p.id}_z", format="%.1f",
                     )

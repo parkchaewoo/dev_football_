@@ -318,13 +318,46 @@ with st.sidebar:
 
     with load_tab2:
         pub_strats = get_public_strategies()
+        my_team_id = team.get("id", "") if team else ""
         for s in pub_strats:
-            if st.button(
-                f"🌐 {s.get('name', '?')} — {s.get('authorName', '')} ({s.get('teamName', '')})",
-                key=f"load_p_{s['id']}",
-                use_container_width=True,
-            ):
-                _load_strategy_from_sidebar(s)
+            strat_team_id = s.get("teamId", "")
+            is_other_team = my_team_id and strat_team_id != my_team_id
+            label = f"🌐 {s.get('name', '?')} — {s.get('authorName', '')} ({s.get('teamName', '')})"
+
+            if is_other_team:
+                # 다른 팀 공개 전술: 2열(가져오기/미리보기)
+                btn_col1, btn_col2 = st.columns([3, 1])
+                with btn_col1:
+                    if st.button(f"⚡ {s.get('name', '?')}", key=f"load_p_imp_{s['id']}", use_container_width=True):
+                        from services.strategy_service import save_strategy as _save
+                        loaded = strategy_from_firestore(s)
+                        strategy_dict = json.loads(strategy_to_json(loaded))
+                        strategy_dict["name"] = s.get("name", "")
+                        new_id = _save(
+                            strategy_dict,
+                            user["uid"], user["displayName"],
+                            my_team_id, team.get("name", ""), "team",
+                        )
+                        if new_id:
+                            st.session_state.strategy = loaded
+                            st.session_state.current_phase_idx = 0
+                            st.session_state.current_frame_idx = 0
+                            st.session_state.firestore_strategy_id = new_id
+                            st.session_state.active_tab = "⚽ 전술 보드"
+                            st.toast(f"✅ '{s.get('name', '')}' → 우리 팀에 저장!")
+                            st.rerun()
+                with btn_col2:
+                    if st.button("👁️", key=f"load_p_pre_{s['id']}", use_container_width=True, help="미리보기 (저장 안 함)"):
+                        loaded = strategy_from_firestore(s)
+                        st.session_state.strategy = loaded
+                        st.session_state.current_phase_idx = 0
+                        st.session_state.current_frame_idx = 0
+                        st.session_state.firestore_strategy_id = None
+                        st.session_state.active_tab = "⚽ 전술 보드"
+                        st.rerun()
+            else:
+                if st.button(label, key=f"load_p_{s['id']}", use_container_width=True):
+                    _load_strategy_from_sidebar(s)
 
     st.divider()
 
