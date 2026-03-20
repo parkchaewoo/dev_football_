@@ -41,3 +41,28 @@ export interface ChatMessage {
   strategyId?: string;
   phaseId?: string;
 }
+
+// Highlight Generator Types
+export interface HighlightClip {
+  id: string;
+  startTime: number;
+  endTime: number;
+  label: string;
+  type: 'auto-audio' | 'auto-motion' | 'manual';
+  confidence: number; // 0~1
+  thumbnail?: string; // data URL
+}
+
+export interface HighlightSettings {
+  audioThreshold: number;     // 0~1, volume spike sensitivity
+  motionThreshold: number;    // 0~1, scene change sensitivity
+  clipPaddingBefore: number;  // seconds before detected moment
+  clipPaddingAfter: number;   // seconds after detected moment
+  minClipDuration: number;    // minimum clip length in seconds
+  mergeGap: number;           // merge clips closer than this (seconds)
+}
+
+export interface AnalysisProgress {
+  phase: 'idle' | 'analyzing-audio' | 'analyzing-video' | 'merging' | 'done';
+  percent: number;
+}

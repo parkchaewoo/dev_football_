@@ -7,6 +7,7 @@ import BallHeightSlider from './components/Controls/BallHeightSlider';
 import ChatRoom from './components/Chat/ChatRoom';
 import StrategyList from './components/Strategy/StrategyList';
 import StrategyForm from './components/Strategy/StrategyForm';
+import HighlightGenerator from './components/Highlight/HighlightGenerator';
 import { useAnimation } from './hooks/useAnimation';
 import type { Player, Phase, Frame, Strategy } from './types';
 import { generateId, saveStrategy } from './utils/storage';
@@ -56,6 +57,7 @@ export default function App() {
   const [showSaveForm, setShowSaveForm] = useState(false);
   const [showLoadList, setShowLoadList] = useState(false);
   const [showChat, setShowChat] = useState(true);
+  const [showHighlight, setShowHighlight] = useState(false);
 
   const animation = useAnimation(phases);
 
@@ -238,6 +240,12 @@ export default function App() {
             불러오기
           </button>
           <button
+            onClick={() => setShowHighlight(true)}
+            className="px-3 py-1 text-sm bg-orange-600 rounded hover:bg-orange-700"
+          >
+            하이라이트
+          </button>
+          <button
             onClick={() => setShowChat((v) => !v)}
             className={`px-3 py-1 text-sm rounded ${showChat ? 'bg-purple-600' : 'bg-gray-700'}`}
           >
@@ -319,6 +327,9 @@ export default function App() {
       )}
       {showLoadList && (
         <StrategyList onLoad={handleLoad} onClose={() => setShowLoadList(false)} />
+      )}
+      {showHighlight && (
+        <HighlightGenerator onClose={() => setShowHighlight(false)} />
       )}
     </div>
   );
