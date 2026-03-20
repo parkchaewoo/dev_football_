@@ -1,215 +1,267 @@
-import type { HighlightClip, HighlightSettings, AnalysisProgress } from '../types';
+import type { GoalClip, GoalDetectionSettings, AnalysisProgress } from '../types';
 
-const DEFAULT_SETTINGS: HighlightSettings = {
-  audioThreshold: 0.6,
-  motionThreshold: 0.4,
-  clipPaddingBefore: 3,
-  clipPaddingAfter: 4,
-  minClipDuration: 3,
-  mergeGap: 2,
+const DEFAULT_GOAL_SETTINGS: GoalDetectionSettings = {
+  spikeMultiplier: 2.5,
+  sustainMultiplier: 1.5,
+  minSustainSeconds: 2.0,
+  cooldownSeconds: 30,
+  clipPaddingBefore: 12,
+  clipPaddingAfter: 8,
+  playbackRate: 16,
 };
 
 let idCounter = 0;
 function genClipId(): string {
-  return `clip-${Date.now()}-${idCounter++}`;
+  return `goal-${Date.now()}-${idCounter++}`;
+}
+
+interface EnergySample {
+  videoTime: number;
+  energy: number;
 }
 
 /**
- * Analyze audio track for volume spikes (cheering, whistles, etc.)
+ * Stream audio from video using AnalyserNode at accelerated playback.
+ * Memory-safe: never loads entire file into memory.
  */
-export async function analyzeAudio(
-  videoEl: HTMLVideoElement,
-  settings: HighlightSettings,
+async function collectAudioEnergy(
+  file: File,
+  settings: GoalDetectionSettings,
   onProgress: (p: AnalysisProgress) => void,
-): Promise<HighlightClip[]> {
-  onProgress({ phase: 'analyzing-audio', percent: 0 });
+  abortSignal?: AbortSignal,
+): Promise<{ samples: EnergySample[]; duration: number }> {
+  const blobUrl = URL.createObjectURL(file);
+  const video = document.createElement('video');
+  video.src = blobUrl;
+  video.muted = true;
+  video.preload = 'auto';
+
+  await new Promise<void>((resolve, reject) => {
+    video.onloadedmetadata = () => resolve();
+    video.onerror = () => reject(new Error('영상을 로드할 수 없습니다'));
+  });
+
+  const duration = video.duration;
+  const samples: EnergySample[] = [];
 
   const audioCtx = new AudioContext();
-  const response = await fetch(videoEl.src);
-  const arrayBuffer = await response.arrayBuffer();
+  const source = audioCtx.createMediaElementSource(video);
+  const analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 2048;
+  const gain = audioCtx.createGain();
+  gain.gain.value = 0;
 
-  onProgress({ phase: 'analyzing-audio', percent: 20 });
+  source.connect(analyser);
+  analyser.connect(gain);
+  gain.connect(audioCtx.destination);
 
-  const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-  const rawData = audioBuffer.getChannelData(0);
-  const sampleRate = audioBuffer.sampleRate;
-  const duration = audioBuffer.duration;
+  const dataArray = new Uint8Array(analyser.fftSize);
+  let currentRate = settings.playbackRate;
+  video.playbackRate = currentRate;
 
-  // Downsample: compute RMS energy per 0.25s window
-  const windowSize = Math.floor(sampleRate * 0.25);
-  const energies: number[] = [];
+  // Unmute to allow audio processing (gain is 0 so no sound)
+  video.muted = false;
 
-  for (let i = 0; i < rawData.length; i += windowSize) {
-    let sum = 0;
-    const end = Math.min(i + windowSize, rawData.length);
-    for (let j = i; j < end; j++) {
-      sum += rawData[j] * rawData[j];
-    }
-    energies.push(Math.sqrt(sum / (end - i)));
-  }
+  await video.play();
 
-  onProgress({ phase: 'analyzing-audio', percent: 60 });
+  return new Promise((resolve, reject) => {
+    let lastTime = -1;
+    let stallCount = 0;
 
-  // Normalize energies
-  const maxEnergy = Math.max(...energies, 0.001);
-  const normalized = energies.map((e) => e / maxEnergy);
-
-  // Find spikes above threshold
-  const clips: HighlightClip[] = [];
-  const threshold = settings.audioThreshold;
-
-  for (let i = 0; i < normalized.length; i++) {
-    if (normalized[i] >= threshold) {
-      const time = (i * windowSize) / sampleRate;
-      const startTime = Math.max(0, time - settings.clipPaddingBefore);
-      const endTime = Math.min(duration, time + settings.clipPaddingAfter);
-
-      clips.push({
-        id: genClipId(),
-        startTime,
-        endTime,
-        label: `오디오 감지 ${formatTime(time)}`,
-        type: 'auto-audio',
-        confidence: normalized[i],
-      });
-    }
-  }
-
-  onProgress({ phase: 'analyzing-audio', percent: 100 });
-  audioCtx.close();
-
-  return mergeOverlappingClips(clips, settings.mergeGap);
-}
-
-/**
- * Analyze video frames for sudden scene changes / motion bursts.
- * Compares consecutive frames using pixel difference.
- */
-export async function analyzeMotion(
-  videoEl: HTMLVideoElement,
-  settings: HighlightSettings,
-  onProgress: (p: AnalysisProgress) => void,
-): Promise<HighlightClip[]> {
-  onProgress({ phase: 'analyzing-video', percent: 0 });
-
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-  const sampleWidth = 160;
-  const sampleHeight = 90;
-  canvas.width = sampleWidth;
-  canvas.height = sampleHeight;
-
-  const duration = videoEl.duration;
-  const sampleInterval = 0.5; // sample every 0.5 seconds
-  const totalSamples = Math.floor(duration / sampleInterval);
-
-  let prevData: Uint8ClampedArray | null = null;
-  const diffs: { time: number; diff: number }[] = [];
-
-  for (let i = 0; i <= totalSamples; i++) {
-    const time = i * sampleInterval;
-    await seekTo(videoEl, time);
-
-    ctx.drawImage(videoEl, 0, 0, sampleWidth, sampleHeight);
-    const imageData = ctx.getImageData(0, 0, sampleWidth, sampleHeight);
-    const data = imageData.data;
-
-    if (prevData) {
-      let totalDiff = 0;
-      for (let p = 0; p < data.length; p += 4) {
-        const dr = Math.abs(data[p] - prevData[p]);
-        const dg = Math.abs(data[p + 1] - prevData[p + 1]);
-        const db = Math.abs(data[p + 2] - prevData[p + 2]);
-        totalDiff += (dr + dg + db) / 3;
+    const interval = setInterval(() => {
+      if (abortSignal?.aborted) {
+        cleanup();
+        reject(new Error('분석이 취소되었습니다'));
+        return;
       }
-      const avgDiff = totalDiff / (sampleWidth * sampleHeight) / 255;
-      diffs.push({ time, diff: avgDiff });
-    }
 
-    prevData = new Uint8ClampedArray(data);
+      const videoTime = video.currentTime;
 
-    if (i % 10 === 0) {
-      onProgress({ phase: 'analyzing-video', percent: Math.round((i / totalSamples) * 100) });
-    }
-  }
+      // Detect stalling and reduce playback rate
+      if (Math.abs(videoTime - lastTime) < 0.01) {
+        stallCount++;
+        if (stallCount > 10 && currentRate > 4) {
+          currentRate = Math.max(4, currentRate / 2);
+          video.playbackRate = currentRate;
+          stallCount = 0;
+        }
+      } else {
+        stallCount = 0;
+      }
+      lastTime = videoTime;
 
-  // Normalize and find spikes
-  const maxDiff = Math.max(...diffs.map((d) => d.diff), 0.001);
-  const threshold = settings.motionThreshold;
+      // Collect RMS energy from analyser
+      analyser.getByteTimeDomainData(dataArray);
+      let sum = 0;
+      for (let i = 0; i < dataArray.length; i++) {
+        const normalized = dataArray[i] / 128 - 1;
+        sum += normalized * normalized;
+      }
+      const rms = Math.sqrt(sum / dataArray.length);
 
-  const clips: HighlightClip[] = [];
-  for (const { time, diff } of diffs) {
-    const normalized = diff / maxDiff;
-    if (normalized >= threshold) {
-      clips.push({
-        id: genClipId(),
-        startTime: Math.max(0, time - settings.clipPaddingBefore),
-        endTime: Math.min(duration, time + settings.clipPaddingAfter),
-        label: `장면 변화 ${formatTime(time)}`,
-        type: 'auto-motion',
-        confidence: normalized,
+      samples.push({ videoTime, energy: rms });
+
+      onProgress({
+        phase: 'scanning-audio',
+        percent: Math.round((videoTime / duration) * 80),
+        currentTime: videoTime,
+        totalDuration: duration,
       });
-    }
-  }
 
-  onProgress({ phase: 'analyzing-video', percent: 100 });
-  return mergeOverlappingClips(clips, settings.mergeGap);
+      if (video.ended || videoTime >= duration - 0.5) {
+        cleanup();
+        resolve({ samples, duration });
+      }
+    }, 50);
+
+    function cleanup() {
+      clearInterval(interval);
+      video.pause();
+      source.disconnect();
+      analyser.disconnect();
+      gain.disconnect();
+      audioCtx.close();
+      URL.revokeObjectURL(blobUrl);
+      video.remove();
+    }
+
+    video.onended = () => {
+      cleanup();
+      resolve({ samples, duration });
+    };
+  });
 }
 
 /**
- * Full analysis: audio + motion combined
+ * Detect goals using burst+sustain pattern on collected energy data.
  */
-export async function analyzeVideo(
-  videoEl: HTMLVideoElement,
-  settings: Partial<HighlightSettings> = {},
+function detectGoals(
+  samples: EnergySample[],
+  duration: number,
+  settings: GoalDetectionSettings,
+): GoalClip[] {
+  if (samples.length === 0) return [];
+
+  // Estimate sample interval from collected data
+  const avgInterval = samples.length > 1
+    ? (samples[samples.length - 1].videoTime - samples[0].videoTime) / (samples.length - 1)
+    : 0.8;
+
+  // Rolling baseline window: 30 seconds of video time
+  const windowSamples = Math.max(1, Math.floor(30 / avgInterval));
+  const halfWindow = Math.floor(windowSamples / 2);
+
+  const goals: GoalClip[] = [];
+  const cooldownSamples = Math.floor(settings.cooldownSeconds / avgInterval);
+  const sustainSamples = Math.max(1, Math.floor(settings.minSustainSeconds / avgInterval));
+
+  let i = 0;
+  let goalNumber = 1;
+
+  while (i < samples.length) {
+    // Compute rolling median baseline
+    const windowStart = Math.max(0, i - halfWindow);
+    const windowEnd = Math.min(samples.length, i + halfWindow);
+    const windowEnergies = samples.slice(windowStart, windowEnd).map((s) => s.energy);
+    windowEnergies.sort((a, b) => a - b);
+    const baseline = windowEnergies[Math.floor(windowEnergies.length / 2)] || 0.001;
+
+    const currentEnergy = samples[i].energy;
+
+    // Check spike
+    if (currentEnergy > baseline * settings.spikeMultiplier) {
+      // Verify sustained duration
+      let sustainEnd = i;
+      while (
+        sustainEnd < samples.length &&
+        samples[sustainEnd].energy > baseline * settings.sustainMultiplier
+      ) {
+        sustainEnd++;
+      }
+
+      const sustainDuration = sustainEnd > i
+        ? samples[Math.min(sustainEnd, samples.length - 1)].videoTime - samples[i].videoTime
+        : 0;
+
+      if (sustainDuration >= settings.minSustainSeconds) {
+        // Goal detected
+        const detectedTime = samples[i].videoTime;
+        const peakEnergy = Math.max(
+          ...samples.slice(i, sustainEnd).map((s) => s.energy),
+        );
+        const confidence = Math.min(
+          1,
+          Math.max(0, (peakEnergy / baseline - settings.spikeMultiplier) / settings.spikeMultiplier),
+        );
+
+        goals.push({
+          id: genClipId(),
+          goalNumber,
+          startTime: Math.max(0, detectedTime - settings.clipPaddingBefore),
+          endTime: Math.min(duration, detectedTime + settings.clipPaddingAfter),
+          detectedTime,
+          label: `${goalNumber}골 (${formatTime(detectedTime)})`,
+          type: 'auto-goal',
+          confidence,
+        });
+
+        goalNumber++;
+        i = sustainEnd + cooldownSamples;
+        continue;
+      }
+    }
+
+    i++;
+  }
+
+  return goals;
+}
+
+/**
+ * Main entry point: analyze video file for goals.
+ */
+export async function analyzeGoals(
+  file: File,
+  settings: Partial<GoalDetectionSettings> = {},
   onProgress: (p: AnalysisProgress) => void,
-): Promise<HighlightClip[]> {
-  const s = { ...DEFAULT_SETTINGS, ...settings };
+  abortSignal?: AbortSignal,
+): Promise<GoalClip[]> {
+  const s = { ...DEFAULT_GOAL_SETTINGS, ...settings };
 
-  const audioClips = await analyzeAudio(videoEl, s, onProgress);
-  const motionClips = await analyzeMotion(videoEl, s, onProgress);
+  // Phase 1: Stream audio and collect energy (0-80%)
+  const { samples, duration } = await collectAudioEnergy(file, s, onProgress, abortSignal);
 
-  onProgress({ phase: 'merging', percent: 50 });
+  // Phase 2: Detect goals from energy data (80-90%)
+  onProgress({ phase: 'detecting-goals', percent: 85 });
+  const goals = detectGoals(samples, duration, s);
 
-  const allClips = [...audioClips, ...motionClips];
-  const merged = mergeOverlappingClips(allClips, s.mergeGap);
+  // Phase 3: Generate thumbnails (90-100%)
+  if (goals.length > 0) {
+    onProgress({ phase: 'generating-thumbnails', percent: 90 });
+    const thumbVideo = document.createElement('video');
+    thumbVideo.src = URL.createObjectURL(file);
+    thumbVideo.preload = 'auto';
+    thumbVideo.crossOrigin = 'anonymous';
 
-  // Filter by minimum duration
-  const filtered = merged.filter((c) => c.endTime - c.startTime >= s.minClipDuration);
+    await new Promise<void>((resolve) => {
+      thumbVideo.onloadedmetadata = () => resolve();
+    });
 
-  // Generate thumbnails
-  for (const clip of filtered) {
-    const midTime = (clip.startTime + clip.endTime) / 2;
-    clip.thumbnail = await captureThumbnail(videoEl, midTime);
+    for (let idx = 0; idx < goals.length; idx++) {
+      if (abortSignal?.aborted) break;
+      goals[idx].thumbnail = await captureThumbnail(thumbVideo, goals[idx].detectedTime);
+      onProgress({
+        phase: 'generating-thumbnails',
+        percent: 90 + Math.round((idx / goals.length) * 10),
+      });
+    }
+
+    URL.revokeObjectURL(thumbVideo.src);
+    thumbVideo.remove();
   }
 
   onProgress({ phase: 'done', percent: 100 });
-  return filtered;
-}
-
-function mergeOverlappingClips(clips: HighlightClip[], mergeGap: number): HighlightClip[] {
-  if (clips.length === 0) return [];
-
-  const sorted = [...clips].sort((a, b) => a.startTime - b.startTime);
-  const merged: HighlightClip[] = [sorted[0]];
-
-  for (let i = 1; i < sorted.length; i++) {
-    const last = merged[merged.length - 1];
-    const current = sorted[i];
-
-    if (current.startTime <= last.endTime + mergeGap) {
-      // Merge
-      last.endTime = Math.max(last.endTime, current.endTime);
-      last.confidence = Math.max(last.confidence, current.confidence);
-      if (last.type !== current.type) {
-        last.label = `하이라이트 ${formatTime(last.startTime)}`;
-      }
-    } else {
-      merged.push({ ...current });
-    }
-  }
-
-  return merged;
+  return goals;
 }
 
 function seekTo(video: HTMLVideoElement, time: number): Promise<void> {
@@ -230,11 +282,13 @@ async function captureThumbnail(video: HTMLVideoElement, time: number): Promise<
 }
 
 export function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
   const s = Math.floor(seconds % 60);
+  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export function getDefaultSettings(): HighlightSettings {
-  return { ...DEFAULT_SETTINGS };
+export function getDefaultGoalSettings(): GoalDetectionSettings {
+  return { ...DEFAULT_GOAL_SETTINGS };
 }

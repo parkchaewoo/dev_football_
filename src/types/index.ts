@@ -42,27 +42,32 @@ export interface ChatMessage {
   phaseId?: string;
 }
 
-// Highlight Generator Types
-export interface HighlightClip {
+// Goal Highlight Generator Types
+export interface GoalClip {
   id: string;
+  goalNumber: number;
   startTime: number;
   endTime: number;
+  detectedTime: number;
   label: string;
-  type: 'auto-audio' | 'auto-motion' | 'manual';
-  confidence: number; // 0~1
-  thumbnail?: string; // data URL
+  type: 'auto-goal' | 'manual';
+  confidence: number;
+  thumbnail?: string;
 }
 
-export interface HighlightSettings {
-  audioThreshold: number;     // 0~1, volume spike sensitivity
-  motionThreshold: number;    // 0~1, scene change sensitivity
-  clipPaddingBefore: number;  // seconds before detected moment
-  clipPaddingAfter: number;   // seconds after detected moment
-  minClipDuration: number;    // minimum clip length in seconds
-  mergeGap: number;           // merge clips closer than this (seconds)
+export interface GoalDetectionSettings {
+  spikeMultiplier: number;
+  sustainMultiplier: number;
+  minSustainSeconds: number;
+  cooldownSeconds: number;
+  clipPaddingBefore: number;
+  clipPaddingAfter: number;
+  playbackRate: number;
 }
 
 export interface AnalysisProgress {
-  phase: 'idle' | 'analyzing-audio' | 'analyzing-video' | 'merging' | 'done';
+  phase: 'idle' | 'scanning-audio' | 'detecting-goals' | 'generating-thumbnails' | 'done';
   percent: number;
+  currentTime?: number;
+  totalDuration?: number;
 }
